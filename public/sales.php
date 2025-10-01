@@ -176,6 +176,9 @@ try {
 } catch(Exception $e) {
     // Mantener valores por defecto
 }
+
+// Incluir el navbar/sidebar unificado
+require_once '../includes/navbar_unified.php';
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -187,10 +190,6 @@ try {
     <style>
         .modal { display: none; }
         .modal.show { display: flex; }
-        .sidebar-transition { transition: transform 0.3s ease-in-out; }
-        @media (max-width: 768px) {
-            .sidebar-hidden { transform: translateX(-100%); }
-        }
         .device-card { 
             transition: all 0.2s ease; 
             cursor: pointer;
@@ -214,267 +213,167 @@ try {
     </style>
 </head>
 <body class="bg-gray-100">
-    <!-- Navigation -->
-    <nav class="bg-white shadow-sm border-b">
-        <div class="px-4 mx-auto">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center">
-                    <button id="sidebar-toggle" class="md:hidden p-2 rounded-md text-gray-600 hover:bg-gray-100">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
-                        </svg>
-                    </button>
-                    <h1 class="ml-2 text-xl font-semibold text-gray-800"><?php echo SYSTEM_NAME; ?></h1>
+    
+    <?php renderNavbar('sales'); ?>
+    
+    <!-- Contenido principal -->
+    <main class="page-content">
+        <div class="p-6">
+            <!-- Header con estadísticas del día -->
+            <div class="mb-6">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
+                    <div>
+                        <h2 class="text-3xl font-bold text-gray-900">Centro de Ventas</h2>
+                        <p class="text-gray-600">
+                            <?php if ($user['rol'] === 'admin'): ?>
+                                Gestión global de ventas y dispositivos
+                            <?php else: ?>
+                                Registra ventas de dispositivos de <?php echo htmlspecialchars($user['tienda_nombre']); ?>
+                            <?php endif; ?>
+                        </p>
+                    </div>
+                    
+                    <!-- Estadísticas del día -->
+                    <div class="stats-card text-white p-4 rounded-lg mt-4 md:mt-0">
+                        <div class="text-center">
+                            <p class="text-sm opacity-90">Hoy</p>
+                            <p class="text-2xl font-bold"><?php echo $today_stats['ventas']; ?> ventas</p>
+                            <p class="text-sm opacity-90">$<?php echo number_format($today_stats['ingresos'], 2); ?></p>
+                        </div>
+                    </div>
                 </div>
                 
-                <div class="flex items-center space-x-4">
-                    <span class="text-sm text-gray-600">
-                        <?php echo htmlspecialchars($user['nombre']); ?>
-                        <?php if ($user['tienda_nombre']): ?>
-                            - <?php echo htmlspecialchars($user['tienda_nombre']); ?>
-                        <?php endif; ?>
-                        <span class="ml-2 px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">
-                            <?php echo ucfirst($user['rol']); ?>
-                        </span>
-                    </span>
-                    <div class="relative">
-                        <button id="user-menu-button" class="flex items-center p-2 rounded-md text-gray-600 hover:bg-gray-100">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                            </svg>
-                        </button>
-                        <div id="user-menu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
-                            <a href="profile.php" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Mi Perfil</a>
-                            <a href="logout.php" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Cerrar Sesión</a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </nav>
-
-    <div class="flex">
-        <!-- Sidebar -->
-        <div id="sidebar" class="sidebar-transition fixed md:relative z-40 w-64 h-screen bg-white shadow-lg md:shadow-none">
-            <div class="p-4">
-                <nav class="space-y-2">
-                    <a href="dashboard.php" class="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">
-                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z"></path>
+                <!-- Consejo rápido -->
+                <div class="quick-sale-hint p-4 rounded-lg">
+                    <div class="flex items-center">
+                        <svg class="w-5 h-5 text-amber-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                         </svg>
-                        Dashboard
-                    </a>
-                    
-                    <a href="inventory.php" class="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">
-                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                        </svg>
-                        Inventario
-                        <?php if ($user['rol'] === 'vendedor'): ?>
-                            <span class="ml-auto text-xs text-gray-500">(Consulta)</span>
-                        <?php endif; ?>
-                    </a>
-                    
-                    <a href="sales.php" class="flex items-center px-4 py-2 text-gray-700 bg-green-50 border-r-4 border-green-500 rounded-l">
-                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
-                        </svg>
-                        Ventas
-                    </a>
-                    
-                    <a href="reports.php" class="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">
-                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                        </svg>
-                        Reportes
-                        <?php if ($user['rol'] === 'vendedor'): ?>
-                            <span class="ml-auto text-xs text-gray-500">(Su tienda)</span>
-                        <?php endif; ?>
-                    </a>
-                    
-                    <?php if (hasPermission('admin')): ?>
-                        <div class="pt-4 mt-4 border-t border-gray-200">
-                            <p class="px-4 text-xs font-medium text-gray-500 uppercase">Administración</p>
-                            <a href="users.php" class="flex items-center px-4 py-2 mt-2 text-gray-700 hover:bg-gray-100 rounded">
-                                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
-                                </svg>
-                                Usuarios
-                            </a>
-                            <a href="stores.php" class="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">
-                                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
-                                </svg>
-                                Tiendas
-                            </a>
-                        </div>
-                    <?php endif; ?>
-                </nav>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div class="flex-1 md:ml-0">
-            <div class="p-6">
-                <!-- Header con estadísticas del día -->
-                <div class="mb-6">
-                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
                         <div>
-                            <h2 class="text-3xl font-bold text-gray-900">Centro de Ventas</h2>
-                            <p class="text-gray-600">
-                                <?php if ($user['rol'] === 'admin'): ?>
-                                    Gestión global de ventas y dispositivos
-                                <?php else: ?>
-                                    Registra ventas de dispositivos de <?php echo htmlspecialchars($user['tienda_nombre']); ?>
-                                <?php endif; ?>
-                            </p>
-                        </div>
-                        
-                        <!-- Estadísticas del día -->
-                        <div class="stats-card text-white p-4 rounded-lg mt-4 md:mt-0">
-                            <div class="text-center">
-                                <p class="text-sm opacity-90">Hoy</p>
-                                <p class="text-2xl font-bold"><?php echo $today_stats['ventas']; ?> ventas</p>
-                                <p class="text-sm opacity-90">$<?php echo number_format($today_stats['ingresos'], 2); ?></p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Consejo rápido -->
-                    <div class="quick-sale-hint p-4 rounded-lg">
-                        <div class="flex items-center">
-                            <svg class="w-5 h-5 text-amber-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                            <div>
-                                <p class="font-medium text-amber-800">Proceso de venta rápido:</p>
-                                <p class="text-sm text-amber-700">1. Selecciona un dispositivo disponible → 2. Completa los datos del cliente → 3. Confirma la venta</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <!-- Dispositivos Disponibles -->
-                    <div class="bg-white rounded-lg shadow">
-                        <div class="p-6 border-b border-gray-200 flex justify-between items-center">
-                            <h3 class="text-lg font-semibold text-gray-900">
-                                Dispositivos Disponibles
-                                <?php if ($user['rol'] === 'vendedor'): ?>
-                                    <span class="text-sm font-normal text-gray-500">- <?php echo htmlspecialchars($user['tienda_nombre']); ?></span>
-                                <?php endif; ?>
-                            </h3>
-                            <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                                <?php echo count($available_devices); ?> disponibles
-                            </span>
-                        </div>
-                        <div class="p-6 max-h-96 overflow-y-auto">
-                            <?php if (empty($available_devices)): ?>
-                                <div class="text-center py-8">
-                                    <svg class="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                                    </svg>
-                                    <p class="text-gray-500 font-medium">No hay dispositivos disponibles</p>
-                                    <p class="text-sm text-gray-400 mt-1">
-                                        <?php if ($user['rol'] === 'admin'): ?>
-                                            Ve a <a href="inventory.php" class="text-blue-600 underline">Inventario</a> para agregar dispositivos
-                                        <?php else: ?>
-                                            Contacta al administrador para agregar dispositivos a tu tienda
-                                        <?php endif; ?>
-                                    </p>
-                                </div>
-                            <?php else: ?>
-                                <div class="space-y-3">
-                                    <?php foreach($available_devices as $device): ?>
-                                        <div class="device-card border rounded-lg p-4 hover:border-green-300 transition-all duration-200" 
-                                             onclick="selectDeviceForSale(<?php echo htmlspecialchars(json_encode($device)); ?>)"
-                                             data-device-id="<?php echo $device['id']; ?>">
-                                            <div class="flex justify-between items-start">
-                                                <div class="flex-1">
-                                                    <div class="flex items-center gap-2 mb-1">
-                                                        <p class="font-medium text-gray-900"><?php echo htmlspecialchars($device['modelo']); ?></p>
-                                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                            Disponible
-                                                        </span>
-                                                    </div>
-                                                    <p class="text-sm text-gray-600 mb-1">
-                                                        <?php echo htmlspecialchars($device['marca']); ?> - <?php echo htmlspecialchars($device['capacidad']); ?>
-                                                        <?php if ($device['color']): ?> - <?php echo htmlspecialchars($device['color']); ?><?php endif; ?>
-                                                    </p>
-                                                    <p class="text-xs text-gray-500"><?php echo ucfirst($device['condicion']); ?></p>
-                                                    <?php if (hasPermission('view_all_sales')): ?>
-                                                        <p class="text-xs text-blue-600 mt-1"><?php echo htmlspecialchars($device['tienda_nombre']); ?></p>
-                                                    <?php endif; ?>
-                                                </div>
-                                                <div class="text-right ml-4">
-                                                    <p class="font-bold text-lg text-green-600">$<?php echo number_format($device['precio'], 2); ?></p>
-                                                    <?php if ($device['precio_compra'] && hasPermission('view_all_sales')): ?>
-                                                        <p class="text-xs text-gray-500">Ganancia: $<?php echo number_format($device['precio'] - $device['precio_compra'], 2); ?></p>
-                                                    <?php endif; ?>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-
-                    <!-- Ventas Recientes -->
-                    <div class="bg-white rounded-lg shadow">
-                        <div class="p-6 border-b border-gray-200 flex justify-between items-center">
-                            <h3 class="text-lg font-semibold text-gray-900">Ventas Recientes</h3>
-                            <span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                                Últimas <?php echo count($recent_sales); ?> ventas
-                            </span>
-                        </div>
-                        <div class="p-6 max-h-96 overflow-y-auto">
-                            <?php if (empty($recent_sales)): ?>
-                                <div class="text-center py-8">
-                                    <svg class="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
-                                    </svg>
-                                    <p class="text-gray-500 font-medium">No hay ventas registradas</p>
-                                    <p class="text-sm text-gray-400 mt-1">¡Registra tu primera venta!</p>
-                                </div>
-                            <?php else: ?>
-                                <div class="space-y-3">
-                                    <?php foreach($recent_sales as $sale): ?>
-                                        <div class="border-l-4 border-green-400 bg-green-50 p-4 rounded-r-lg">
-                                            <div class="flex justify-between items-start">
-                                                <div class="flex-1">
-                                                    <p class="font-medium text-gray-900"><?php echo htmlspecialchars($sale['modelo']); ?></p>
-                                                    <p class="text-sm text-gray-600 mb-1">
-                                                        Cliente: <?php echo htmlspecialchars($sale['cliente_nombre']); ?>
-                                                    </p>
-                                                    <div class="flex items-center gap-2 text-xs text-gray-500">
-                                                        <span><?php echo date('d/m/Y H:i', strtotime($sale['fecha_venta'])); ?></span>
-                                                        <?php if (hasPermission('view_all_sales')): ?>
-                                                            <span>•</span>
-                                                            <span><?php echo htmlspecialchars($sale['tienda_nombre']); ?></span>
-                                                        <?php endif; ?>
-                                                        <span>•</span>
-                                                        <span><?php echo htmlspecialchars($sale['vendedor_nombre']); ?></span>
-                                                    </div>
-                                                </div>
-                                                <div class="text-right ml-4">
-                                                    <p class="font-bold text-lg text-green-600">$<?php echo number_format($sale['precio_venta'], 2); ?></p>
-                                                    <p class="text-xs text-gray-500"><?php echo ucfirst($sale['metodo_pago']); ?></p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            <?php endif; ?>
+                            <p class="font-medium text-amber-800">Proceso de venta rápido:</p>
+                            <p class="text-sm text-amber-700">1. Selecciona un dispositivo disponible → 2. Completa los datos del cliente → 3. Confirma la venta</p>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
 
-    <!-- Overlay para móvil -->
-    <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-30 md:hidden hidden"></div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Dispositivos Disponibles -->
+                <div class="bg-white rounded-lg shadow">
+                    <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+                        <h3 class="text-lg font-semibold text-gray-900">
+                            Dispositivos Disponibles
+                            <?php if ($user['rol'] === 'vendedor'): ?>
+                                <span class="text-sm font-normal text-gray-500">- <?php echo htmlspecialchars($user['tienda_nombre']); ?></span>
+                            <?php endif; ?>
+                        </h3>
+                        <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                            <?php echo count($available_devices); ?> disponibles
+                        </span>
+                    </div>
+                    <div class="p-6 max-h-96 overflow-y-auto">
+                        <?php if (empty($available_devices)): ?>
+                            <div class="text-center py-8">
+                                <svg class="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                                </svg>
+                                <p class="text-gray-500 font-medium">No hay dispositivos disponibles</p>
+                                <p class="text-sm text-gray-400 mt-1">
+                                    <?php if ($user['rol'] === 'admin'): ?>
+                                        Ve a <a href="inventory.php" class="text-blue-600 underline">Inventario</a> para agregar dispositivos
+                                    <?php else: ?>
+                                        Contacta al administrador para agregar dispositivos a tu tienda
+                                    <?php endif; ?>
+                                </p>
+                            </div>
+                        <?php else: ?>
+                            <div class="space-y-3">
+                                <?php foreach($available_devices as $device): ?>
+                                    <div class="device-card border rounded-lg p-4 hover:border-green-300 transition-all duration-200" 
+                                         onclick="selectDeviceForSale(<?php echo htmlspecialchars(json_encode($device)); ?>)"
+                                         data-device-id="<?php echo $device['id']; ?>">
+                                        <div class="flex justify-between items-start">
+                                            <div class="flex-1">
+                                                <div class="flex items-center gap-2 mb-1">
+                                                    <p class="font-medium text-gray-900"><?php echo htmlspecialchars($device['modelo']); ?></p>
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                        Disponible
+                                                    </span>
+                                                </div>
+                                                <p class="text-sm text-gray-600 mb-1">
+                                                    <?php echo htmlspecialchars($device['marca']); ?> - <?php echo htmlspecialchars($device['capacidad']); ?>
+                                                    <?php if ($device['color']): ?> - <?php echo htmlspecialchars($device['color']); ?><?php endif; ?>
+                                                </p>
+                                                <p class="text-xs text-gray-500"><?php echo ucfirst($device['condicion']); ?></p>
+                                                <?php if (hasPermission('view_all_sales')): ?>
+                                                    <p class="text-xs text-blue-600 mt-1"><?php echo htmlspecialchars($device['tienda_nombre']); ?></p>
+                                                <?php endif; ?>
+                                            </div>
+                                            <div class="text-right ml-4">
+                                                <p class="font-bold text-lg text-green-600">$<?php echo number_format($device['precio'], 2); ?></p>
+                                                <?php if ($device['precio_compra'] && hasPermission('view_all_sales')): ?>
+                                                    <p class="text-xs text-gray-500">Ganancia: $<?php echo number_format($device['precio'] - $device['precio_compra'], 2); ?></p>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <!-- Ventas Recientes -->
+                <div class="bg-white rounded-lg shadow">
+                    <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+                        <h3 class="text-lg font-semibold text-gray-900">Ventas Recientes</h3>
+                        <span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                            Últimas <?php echo count($recent_sales); ?> ventas
+                        </span>
+                    </div>
+                    <div class="p-6 max-h-96 overflow-y-auto">
+                        <?php if (empty($recent_sales)): ?>
+                            <div class="text-center py-8">
+                                <svg class="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                                </svg>
+                                <p class="text-gray-500 font-medium">No hay ventas registradas</p>
+                                <p class="text-sm text-gray-400 mt-1">¡Registra tu primera venta!</p>
+                            </div>
+                        <?php else: ?>
+                            <div class="space-y-3">
+                                <?php foreach($recent_sales as $sale): ?>
+                                    <div class="border-l-4 border-green-400 bg-green-50 p-4 rounded-r-lg">
+                                        <div class="flex justify-between items-start">
+                                            <div class="flex-1">
+                                                <p class="font-medium text-gray-900"><?php echo htmlspecialchars($sale['modelo']); ?></p>
+                                                <p class="text-sm text-gray-600 mb-1">
+                                                    Cliente: <?php echo htmlspecialchars($sale['cliente_nombre']); ?>
+                                                </p>
+                                                <div class="flex items-center gap-2 text-xs text-gray-500">
+                                                    <span><?php echo date('d/m/Y H:i', strtotime($sale['fecha_venta'])); ?></span>
+                                                    <?php if (hasPermission('view_all_sales')): ?>
+                                                        <span>•</span>
+                                                        <span><?php echo htmlspecialchars($sale['tienda_nombre']); ?></span>
+                                                    <?php endif; ?>
+                                                    <span>•</span>
+                                                    <span><?php echo htmlspecialchars($sale['vendedor_nombre']); ?></span>
+                                                </div>
+                                            </div>
+                                            <div class="text-right ml-4">
+                                                <p class="font-bold text-lg text-green-600">$<?php echo number_format($sale['precio_venta'], 2); ?></p>
+                                                <p class="text-xs text-gray-500"><?php echo ucfirst($sale['metodo_pago']); ?></p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
 
     <!-- Modal Registrar Venta -->
     <div id="saleModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
@@ -557,10 +456,10 @@ try {
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Método de Pago</label>
                                 <select id="metodo_pago" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
-                                    <option value="efectivo">💵 Efectivo</option>
-                                    <option value="tarjeta">💳 Tarjeta</option>
-                                    <option value="transferencia">🏦 Transferencia</option>
-                                    <option value="credito">📝 Crédito</option>
+                                    <option value="efectivo">Efectivo</option>
+                                    <option value="tarjeta">Tarjeta</option>
+                                    <option value="transferencia">Transferencia</option>
+                                    <option value="credito">Crédito</option>
                                 </select>
                             </div>
                         </div>
@@ -592,36 +491,11 @@ try {
     </div>
 
     <script>
-        // Toggle sidebar
-        document.getElementById('sidebar-toggle').addEventListener('click', () => {
-            document.getElementById('sidebar').classList.toggle('sidebar-hidden');
-            document.getElementById('sidebar-overlay').classList.toggle('hidden');
-        });
-
-        document.getElementById('sidebar-overlay').addEventListener('click', () => {
-            document.getElementById('sidebar').classList.add('sidebar-hidden');
-            document.getElementById('sidebar-overlay').classList.add('hidden');
-        });
-
-        // User menu toggle
-        const userMenuButton = document.getElementById('user-menu-button');
-        const userMenu = document.getElementById('user-menu');
-
-        userMenuButton.addEventListener('click', () => {
-            userMenu.classList.toggle('hidden');
-        });
-
-        document.addEventListener('click', (e) => {
-            if (!userMenuButton.contains(e.target) && !userMenu.contains(e.target)) {
-                userMenu.classList.add('hidden');
-            }
-        });
-
         let selectedDevice = null;
 
         function openSaleModal() {
             if (!selectedDevice) {
-                showNotification('⚠️ Primero selecciona un dispositivo de la lista haciendo clic sobre él', 'warning');
+                showNotification('Primero selecciona un dispositivo de la lista haciendo clic sobre él', 'warning');
                 return;
             }
             document.getElementById('saleModal').classList.add('show');
@@ -652,7 +526,7 @@ try {
             document.getElementById('selectedDeviceId').value = device.id;
             document.getElementById('deviceModel').textContent = device.modelo;
             document.getElementById('deviceDetails').textContent = `${device.marca} - ${device.capacidad}${device.color ? ' - ' + device.color : ''}`;
-            document.getElementById('devicePrice').textContent = `${parseFloat(device.precio).toLocaleString('es-ES', {minimumFractionDigits: 2})}`;
+            document.getElementById('devicePrice').textContent = `$${parseFloat(device.precio).toFixed(2)}`;
             document.getElementById('deviceInfo').classList.remove('hidden');
             
             // Pre-llenar precio de venta
@@ -681,7 +555,7 @@ try {
 
         function registerSale() {
             if (!selectedDevice) {
-                showNotification('❌ No se ha seleccionado un dispositivo', 'error');
+                showNotification('No se ha seleccionado un dispositivo', 'error');
                 return;
             }
             
@@ -689,13 +563,13 @@ try {
             const precio_venta = document.getElementById('precio_venta').value;
             
             if (!cliente_nombre) {
-                showNotification('⚠️ Por favor ingresa el nombre del cliente', 'warning');
+                showNotification('Por favor ingresa el nombre del cliente', 'warning');
                 document.getElementById('cliente_nombre').focus();
                 return;
             }
             
             if (!precio_venta || precio_venta <= 0) {
-                showNotification('⚠️ Por favor ingresa un precio de venta válido', 'warning');
+                showNotification('Por favor ingresa un precio de venta válido', 'warning');
                 document.getElementById('precio_venta').focus();
                 return;
             }
@@ -729,21 +603,17 @@ try {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    showNotification('🎉 ' + data.message, 'success');
-                    
-                    // Limpiar formulario y cerrar modal
+                    showNotification(data.message, 'success');
                     clearSaleForm();
                     closeSaleModal();
-                    
-                    // Recargar página después de un momento para ver la nueva venta
                     setTimeout(() => location.reload(), 1500);
                 } else {
-                    showNotification('❌ ' + data.message, 'error');
+                    showNotification(data.message, 'error');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                showNotification('❌ Error en la conexión. Por favor intenta nuevamente.', 'error');
+                showNotification('Error en la conexión. Por favor intenta nuevamente.', 'error');
             })
             .finally(() => {
                 button.disabled = false;
@@ -751,7 +621,7 @@ try {
             });
         }
 
-        // Sistema de notificaciones mejorado
+        // Sistema de notificaciones
         function showNotification(message, type = 'info') {
             const notification = document.createElement('div');
             const bgColors = {
@@ -761,34 +631,15 @@ try {
                 'info': 'bg-blue-500'
             };
             
-            notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm transition-all duration-300 transform translate-x-full ${bgColors[type]} text-white`;
-            notification.innerHTML = `
-                <div class="flex items-center">
-                    <div class="flex-1">${message}</div>
-                    <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-white/80 hover:text-white">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                        </svg>
-                    </button>
-                </div>
-            `;
+            notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm transition-all duration-300 ${bgColors[type]} text-white`;
+            notification.textContent = message;
             
             document.body.appendChild(notification);
             
-            // Animar entrada
             setTimeout(() => {
-                notification.classList.remove('translate-x-full');
-            }, 100);
-            
-            // Auto-remove after 5 seconds
-            setTimeout(() => {
-                notification.classList.add('translate-x-full');
-                setTimeout(() => {
-                    if (notification.parentElement) {
-                        notification.remove();
-                    }
-                }, 300);
-            }, 5000);
+                notification.style.opacity = '0';
+                setTimeout(() => notification.remove(), 300);
+            }, 4000);
         }
 
         // Cerrar modal con Escape
@@ -806,25 +657,15 @@ try {
             }
         });
 
-        // Auto-completar email basado en el nombre (sugerencia)
+        // Auto-completar email basado en el nombre
         document.getElementById('cliente_nombre').addEventListener('blur', function() {
             const nombre = this.value.trim();
             const emailField = document.getElementById('cliente_email');
             
             if (nombre && !emailField.value) {
-                // Sugerir email basado en el nombre (solo como placeholder)
                 const sugerencia = nombre.toLowerCase().replace(/\s+/g, '.') + '@ejemplo.com';
                 emailField.placeholder = `Ej: ${sugerencia}`;
             }
-        });
-
-        // Mostrar mensaje de bienvenida para nuevos vendedores
-        document.addEventListener('DOMContentLoaded', function() {
-            <?php if ($user['rol'] === 'vendedor' && count($recent_sales) === 0): ?>
-                setTimeout(() => {
-                    showNotification('👋 ¡Bienvenido al sistema de ventas! Selecciona un dispositivo para registrar tu primera venta.', 'info');
-                }, 1000);
-            <?php endif; ?>
         });
     </script>
 </body>

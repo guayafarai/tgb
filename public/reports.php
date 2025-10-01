@@ -258,6 +258,9 @@ try {
     $stats_tiendas = [];
     $inventario_stats = [];
 }
+
+// Incluir el navbar/sidebar unificado
+require_once '../includes/navbar_unified.php';
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -267,10 +270,6 @@ try {
     <title>Reportes Detallados - <?php echo SYSTEM_NAME; ?></title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
     <style>
-        .sidebar-transition { transition: transform 0.3s ease-in-out; }
-        @media (max-width: 768px) {
-            .sidebar-hidden { transform: translateX(-100%); }
-        }
         @media print {
             .no-print { display: none !important; }
             .print-full { width: 100% !important; margin: 0 !important; }
@@ -283,449 +282,343 @@ try {
     </style>
 </head>
 <body class="bg-gray-100">
-    <!-- Navigation -->
-    <nav class="bg-white shadow-sm border-b no-print">
-        <div class="px-4 mx-auto">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center">
-                    <button id="sidebar-toggle" class="md:hidden p-2 rounded-md text-gray-600 hover:bg-gray-100">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+    
+    <div class="no-print">
+        <?php renderNavbar('reports'); ?>
+    </div>
+    
+    <!-- Contenido principal -->
+    <main class="page-content print-full">
+        <div class="p-6">
+            <!-- Header -->
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 no-print">
+                <div>
+                    <h2 class="text-3xl font-bold text-gray-900">Reportes Detallados</h2>
+                    <p class="text-gray-600">Análisis completo de ventas con vendedor y tienda</p>
+                </div>
+                <div class="flex space-x-2 mt-4 md:mt-0">
+                    <button onclick="exportToCSV()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                         </svg>
+                        Exportar CSV
                     </button>
-                    <h1 class="ml-2 text-xl font-semibold text-gray-800"><?php echo SYSTEM_NAME; ?></h1>
-                </div>
-                
-                <div class="flex items-center space-x-4">
-                    <span class="text-sm text-gray-600">
-                        <?php echo htmlspecialchars($user['nombre']); ?>
-                        <?php if ($user['tienda_nombre']): ?>
-                            - <?php echo htmlspecialchars($user['tienda_nombre']); ?>
-                        <?php endif; ?>
-                    </span>
-                    <div class="relative">
-                        <button id="user-menu-button" class="flex items-center p-2 rounded-md text-gray-600 hover:bg-gray-100">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-                            </svg>
-                        </button>
-                        <div id="user-menu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
-                            <a href="profile.php" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Mi Perfil</a>
-                            <a href="logout.php" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Cerrar Sesión</a>
-                        </div>
-                    </div>
+                    <button onclick="window.print()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
+                        </svg>
+                        Imprimir
+                    </button>
                 </div>
             </div>
-        </div>
-    </nav>
 
-    <div class="flex">
-        <!-- Sidebar -->
-        <div id="sidebar" class="sidebar-transition fixed md:relative z-40 w-64 h-screen bg-white shadow-lg md:shadow-none no-print">
-            <div class="p-4">
-                <nav class="space-y-2">
-                    <a href="dashboard.php" class="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">
-                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z"></path>
-                        </svg>
-                        Dashboard
-                    </a>
-                    
-                    <a href="inventory.php" class="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">
-                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                        </svg>
-                        Inventario
-                    </a>
-                    
-                    <a href="sales.php" class="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">
-                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
-                        </svg>
-                        Ventas
-                    </a>
-                    
-                    <a href="reports.php" class="flex items-center px-4 py-2 text-gray-700 bg-blue-50 border-r-4 border-blue-500 rounded-l">
-                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                        </svg>
-                        Reportes
-                    </a>
-                    
-                    <?php if (hasPermission('admin')): ?>
-                        <div class="pt-4 mt-4 border-t border-gray-200">
-                            <p class="px-4 text-xs font-medium text-gray-500 uppercase">Administración</p>
-                            <a href="users.php" class="flex items-center px-4 py-2 mt-2 text-gray-700 hover:bg-gray-100 rounded">
-                                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
-                                </svg>
-                                Usuarios
-                            </a>
-                            <a href="stores.php" class="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">
-                                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
-                                </svg>
-                                Tiendas
-                            </a>
+            <!-- Filtros Avanzados -->
+            <div class="bg-white rounded-lg shadow-sm p-4 mb-6 no-print">
+                <form method="GET" class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Fecha Inicio</label>
+                            <input type="date" name="fecha_inicio" value="<?php echo htmlspecialchars($fecha_inicio); ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                         </div>
-                    <?php endif; ?>
-                </nav>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div class="flex-1 md:ml-0 print-full">
-            <div class="p-6">
-                <!-- Header -->
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 no-print">
-                    <div>
-                        <h2 class="text-3xl font-bold text-gray-900">Reportes Detallados</h2>
-                        <p class="text-gray-600">Análisis completo de ventas con vendedor y tienda</p>
-                    </div>
-                    <div class="flex space-x-2 mt-4 md:mt-0">
-                        <button onclick="exportToCSV()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center">
-                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                            </svg>
-                            Exportar CSV
-                        </button>
-                        <button onclick="window.print()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center">
-                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
-                            </svg>
-                            Imprimir
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Filtros Avanzados -->
-                <div class="bg-white rounded-lg shadow-sm p-4 mb-6 no-print">
-                    <form method="GET" class="space-y-4">
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Fecha Inicio</label>
-                                <input type="date" name="fecha_inicio" value="<?php echo htmlspecialchars($fecha_inicio); ?>" 
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Fecha Fin</label>
-                                <input type="date" name="fecha_fin" value="<?php echo htmlspecialchars($fecha_fin); ?>" 
-                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                            </div>
-                            
-                            <?php if (hasPermission('admin')): ?>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Tienda</label>
-                                <select name="tienda_filtro" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <option value="">Todas las tiendas</option>
-                                    <?php foreach($tiendas_filtro as $tienda): ?>
-                                        <option value="<?php echo $tienda['id']; ?>" <?php echo $tienda_filtro == $tienda['id'] ? 'selected' : ''; ?>>
-                                            <?php echo htmlspecialchars($tienda['nombre']); ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                            
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Vendedor</label>
-                                <select name="vendedor_filtro" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <option value="">Todos los vendedores</option>
-                                    <?php foreach($vendedores_filtro as $vendedor): ?>
-                                        <option value="<?php echo $vendedor['id']; ?>" <?php echo $vendedor_filtro == $vendedor['id'] ? 'selected' : ''; ?>>
-                                            <?php echo htmlspecialchars($vendedor['nombre']); ?>
-                                            <?php if ($vendedor['tienda_nombre']): ?>
-                                                (<?php echo htmlspecialchars($vendedor['tienda_nombre']); ?>)
-                                            <?php endif; ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                            <?php endif; ?>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Fecha Fin</label>
+                            <input type="date" name="fecha_fin" value="<?php echo htmlspecialchars($fecha_fin); ?>" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                         </div>
                         
-                        <div class="flex gap-3">
-                            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
-                                Filtrar Reportes
-                            </button>
-                            <button type="button" onclick="resetFilters()" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors">
-                                Limpiar Filtros
-                            </button>
+                        <?php if (hasPermission('admin')): ?>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Tienda</label>
+                            <select name="tienda_filtro" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <option value="">Todas las tiendas</option>
+                                <?php foreach($tiendas_filtro as $tienda): ?>
+                                    <option value="<?php echo $tienda['id']; ?>" <?php echo $tienda_filtro == $tienda['id'] ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($tienda['nombre']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
-                    </form>
-                </div>
-
-                <!-- Estadísticas Generales -->
-                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-                    <div class="bg-white rounded-lg shadow p-4">
-                        <div class="text-center">
-                            <div class="bg-blue-100 rounded-lg p-2 mx-auto w-12 h-12 flex items-center justify-center mb-2">
-                                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
-                                </svg>
-                            </div>
-                            <p class="text-2xl font-bold text-gray-900"><?php echo number_format($stats['total_ventas']); ?></p>
-                            <p class="text-sm text-gray-600">Total Ventas</p>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Vendedor</label>
+                            <select name="vendedor_filtro" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <option value="">Todos los vendedores</option>
+                                <?php foreach($vendedores_filtro as $vendedor): ?>
+                                    <option value="<?php echo $vendedor['id']; ?>" <?php echo $vendedor_filtro == $vendedor['id'] ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($vendedor['nombre']); ?>
+                                        <?php if ($vendedor['tienda_nombre']): ?>
+                                            (<?php echo htmlspecialchars($vendedor['tienda_nombre']); ?>)
+                                        <?php endif; ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
+                        <?php endif; ?>
                     </div>
-
-                    <div class="bg-white rounded-lg shadow p-4">
-                        <div class="text-center">
-                            <div class="bg-green-100 rounded-lg p-2 mx-auto w-12 h-12 flex items-center justify-center mb-2">
-                                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
-                                </svg>
-                            </div>
-                            <p class="text-2xl font-bold text-gray-900">$<?php echo number_format($stats['total_ingresos'], 2); ?></p>
-                            <p class="text-sm text-gray-600">Ingresos Totales</p>
-                        </div>
+                    
+                    <div class="flex gap-3">
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
+                            Filtrar Reportes
+                        </button>
+                        <button type="button" onclick="resetFilters()" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors">
+                            Limpiar Filtros
+                        </button>
                     </div>
+                </form>
+            </div>
 
-                    <div class="bg-white rounded-lg shadow p-4">
-                        <div class="text-center">
-                            <div class="bg-purple-100 rounded-lg p-2 mx-auto w-12 h-12 flex items-center justify-center mb-2">
-                                <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                                </svg>
-                            </div>
-                            <p class="text-2xl font-bold text-gray-900">$<?php echo number_format($stats['promedio_venta'], 2); ?></p>
-                            <p class="text-sm text-gray-600">Promedio Venta</p>
+            <!-- Estadísticas Generales -->
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+                <div class="bg-white rounded-lg shadow p-4">
+                    <div class="text-center">
+                        <div class="bg-blue-100 rounded-lg p-2 mx-auto w-12 h-12 flex items-center justify-center mb-2">
+                            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                            </svg>
                         </div>
-                    </div>
-
-                    <?php if (hasPermission('admin') && isset($stats['ganancia_total'])): ?>
-                    <div class="bg-white rounded-lg shadow p-4">
-                        <div class="text-center">
-                            <div class="bg-yellow-100 rounded-lg p-2 mx-auto w-12 h-12 flex items-center justify-center mb-2">
-                                <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
-                                </svg>
-                            </div>
-                            <p class="text-2xl font-bold text-green-600">$<?php echo number_format($stats['ganancia_total'], 2); ?></p>
-                            <p class="text-sm text-gray-600">Ganancia Total</p>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-
-                    <div class="bg-white rounded-lg shadow p-4">
-                        <div class="text-center">
-                            <div class="bg-indigo-100 rounded-lg p-2 mx-auto w-12 h-12 flex items-center justify-center mb-2">
-                                <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                                </svg>
-                            </div>
-                            <p class="text-2xl font-bold text-gray-900"><?php echo $stats['dias_con_ventas']; ?></p>
-                            <p class="text-sm text-gray-600">Días con Ventas</p>
-                        </div>
-                    </div>
-
-                    <?php if (hasPermission('admin')): ?>
-                    <div class="bg-white rounded-lg shadow p-4">
-                        <div class="text-center">
-                            <div class="bg-red-100 rounded-lg p-2 mx-auto w-12 h-12 flex items-center justify-center mb-2">
-                                <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
-                                </svg>
-                            </div>
-                            <p class="text-2xl font-bold text-gray-900"><?php echo $stats['vendedores_activos']; ?></p>
-                            <p class="text-sm text-gray-600">Vendedores Activos</p>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                </div>
-
-                <!-- Tabla de Ventas Detalladas -->
-                <div class="bg-white rounded-lg shadow overflow-hidden">
-                    <div class="p-6 border-b border-gray-200">
-                        <div class="flex justify-between items-center">
-                            <h3 class="text-lg font-semibold text-gray-900">Ventas Detalladas</h3>
-                            <div class="text-sm text-gray-500">
-                                Total de registros: <?php echo count($ventas_detalladas); ?>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full" id="ventas-table">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha/Hora</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dispositivo</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cliente</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vendedor</th>
-                                    <?php if (hasPermission('admin')): ?>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tienda</th>
-                                    <?php endif; ?>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Precio</th>
-                                    <?php if (hasPermission('admin')): ?>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ganancia</th>
-                                    <?php endif; ?>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pago</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                <?php if (empty($ventas_detalladas)): ?>
-                                    <tr>
-                                        <td colspan="<?php echo hasPermission('admin') ? '9' : '7'; ?>" class="px-4 py-8 text-center">
-                                            <div class="flex flex-col items-center">
-                                                <svg class="w-12 h-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                                                </svg>
-                                                <p class="text-gray-500 text-lg font-medium">No hay ventas en el período seleccionado</p>
-                                                <p class="text-gray-400 text-sm mt-1">Intenta ajustar el rango de fechas o filtros</p>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php else: ?>
-                                    <?php foreach($ventas_detalladas as $venta): ?>
-                                        <tr class="highlight-row">
-                                            <td class="px-4 py-4 text-sm font-mono text-blue-600">#<?php echo $venta['venta_id']; ?></td>
-                                            <td class="px-4 py-4 text-sm text-gray-900">
-                                                <div>
-                                                    <p class="font-medium"><?php echo date('d/m/Y', strtotime($venta['fecha'])); ?></p>
-                                                    <p class="text-xs text-gray-500"><?php echo date('H:i', strtotime($venta['hora'])); ?></p>
-                                                </div>
-                                            </td>
-                                            <td class="px-4 py-4 text-sm text-gray-900">
-                                                <div>
-                                                    <p class="font-medium"><?php echo htmlspecialchars($venta['modelo']); ?></p>
-                                                    <p class="text-xs text-gray-500">
-                                                        <?php echo htmlspecialchars($venta['marca']); ?> - <?php echo htmlspecialchars($venta['capacidad']); ?>
-                                                        <?php if ($venta['color']): ?>- <?php echo htmlspecialchars($venta['color']); ?><?php endif; ?>
-                                                    </p>
-                                                    <?php if ($venta['imei1']): ?>
-                                                        <p class="text-xs text-gray-400 font-mono">IMEI: <?php echo htmlspecialchars($venta['imei1']); ?></p>
-                                                    <?php endif; ?>
-                                                </div>
-                                            </td>
-                                            <td class="px-4 py-4 text-sm text-gray-900">
-                                                <div>
-                                                    <p class="font-medium"><?php echo htmlspecialchars($venta['cliente_nombre']); ?></p>
-                                                    <?php if ($venta['cliente_telefono']): ?>
-                                                        <p class="text-xs text-gray-500"><?php echo htmlspecialchars($venta['cliente_telefono']); ?></p>
-                                                    <?php endif; ?>
-                                                </div>
-                                            </td>
-                                            <td class="px-4 py-4 text-sm text-gray-900">
-                                                <div>
-                                                    <p class="font-medium"><?php echo htmlspecialchars($venta['vendedor_nombre']); ?></p>
-                                                    <?php if (hasPermission('admin') && isset($venta['vendedor_usuario'])): ?>
-                                                        <p class="text-xs text-gray-500">@<?php echo htmlspecialchars($venta['vendedor_usuario']); ?></p>
-                                                    <?php endif; ?>
-                                                </div>
-                                            </td>
-                                            <?php if (hasPermission('admin')): ?>
-                                            <td class="px-4 py-4 text-sm">
-                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                    <?php echo htmlspecialchars($venta['tienda_nombre']); ?>
-                                                </span>
-                                            </td>
-                                            <?php endif; ?>
-                                            <td class="px-4 py-4 text-sm font-semibold text-green-600">
-                                                $<?php echo number_format($venta['precio_venta'], 2); ?>
-                                            </td>
-                                            <?php if (hasPermission('admin')): ?>
-                                            <td class="px-4 py-4 text-sm">
-                                                <?php if (isset($venta['ganancia_venta']) && $venta['ganancia_venta'] !== null): ?>
-                                                    <span class="<?php echo $venta['ganancia_venta'] > 0 ? 'profit-positive' : ($venta['ganancia_venta'] < 0 ? 'profit-negative' : 'profit-neutral'); ?> font-medium">
-                                                        $<?php echo number_format($venta['ganancia_venta'], 2); ?>
-                                                    </span>
-                                                    <?php 
-                                                    $margin = $venta['precio_venta'] > 0 ? ($venta['ganancia_venta'] / $venta['precio_venta']) * 100 : 0;
-                                                    ?>
-                                                    <p class="text-xs text-gray-500"><?php echo number_format($margin, 1); ?>% margen</p>
-                                                <?php else: ?>
-                                                    <span class="text-gray-400">N/D</span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <?php endif; ?>
-                                            <td class="px-4 py-4 text-sm">
-                                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium <?php 
-                                                    echo $venta['metodo_pago'] === 'efectivo' ? 'bg-green-100 text-green-800' : 
-                                                        ($venta['metodo_pago'] === 'tarjeta' ? 'bg-blue-100 text-blue-800' : 
-                                                        ($venta['metodo_pago'] === 'transferencia' ? 'bg-purple-100 text-purple-800' : 'bg-yellow-100 text-yellow-800')); 
-                                                ?>">
-                                                    <?php echo ucfirst($venta['metodo_pago']); ?>
-                                                </span>
-                                                <?php if (isset($venta['notas_venta']) && $venta['notas_venta']): ?>
-                                                    <p class="text-xs text-gray-500 mt-1" title="<?php echo htmlspecialchars($venta['notas_venta']); ?>">
-                                                        <?php echo strlen($venta['notas_venta']) > 30 ? substr(htmlspecialchars($venta['notas_venta']), 0, 30) . '...' : htmlspecialchars($venta['notas_venta']); ?>
-                                                    </p>
-                                                <?php endif; ?>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                <?php endif; ?>
-                            </tbody>
-                        </table>
+                        <p class="text-2xl font-bold text-gray-900"><?php echo number_format($stats['total_ventas']); ?></p>
+                        <p class="text-sm text-gray-600">Total Ventas</p>
                     </div>
                 </div>
 
-                <!-- Resumen de productos más vendidos -->
-                <?php if (!empty($top_productos)): ?>
-                <div class="mt-8 bg-white rounded-lg shadow">
-                    <div class="p-6 border-b border-gray-200">
-                        <h3 class="text-lg font-semibold text-gray-900">Productos Más Vendidos</h3>
-                    </div>
-                    <div class="p-6">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <?php foreach($top_productos as $index => $producto): ?>
-                                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                                    <div class="flex items-center">
-                                        <span class="flex items-center justify-center w-8 h-8 bg-blue-600 text-white rounded-full text-sm font-bold mr-3">
-                                            <?php echo $index + 1; ?>
-                                        </span>
-                                        <div>
-                                            <p class="font-medium text-gray-900"><?php echo htmlspecialchars($producto['modelo']); ?></p>
-                                            <p class="text-sm text-gray-600"><?php echo htmlspecialchars($producto['marca']); ?></p>
-                                        </div>
-                                    </div>
-                                    <div class="text-right">
-                                        <p class="font-bold text-blue-600"><?php echo $producto['cantidad_vendida']; ?> vendidos</p>
-                                        <p class="text-sm text-green-600">$<?php echo number_format($producto['ingresos_producto'], 2); ?></p>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
+                <div class="bg-white rounded-lg shadow p-4">
+                    <div class="text-center">
+                        <div class="bg-green-100 rounded-lg p-2 mx-auto w-12 h-12 flex items-center justify-center mb-2">
+                            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                            </svg>
                         </div>
+                        <p class="text-2xl font-bold text-gray-900">$<?php echo number_format($stats['total_ingresos'], 2); ?></p>
+                        <p class="text-sm text-gray-600">Ingresos Totales</p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-4">
+                    <div class="text-center">
+                        <div class="bg-purple-100 rounded-lg p-2 mx-auto w-12 h-12 flex items-center justify-center mb-2">
+                            <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                            </svg>
+                        </div>
+                        <p class="text-2xl font-bold text-gray-900">$<?php echo number_format($stats['promedio_venta'], 2); ?></p>
+                        <p class="text-sm text-gray-600">Promedio Venta</p>
+                    </div>
+                </div>
+
+                <?php if (hasPermission('admin') && isset($stats['ganancia_total'])): ?>
+                <div class="bg-white rounded-lg shadow p-4">
+                    <div class="text-center">
+                        <div class="bg-yellow-100 rounded-lg p-2 mx-auto w-12 h-12 flex items-center justify-center mb-2">
+                            <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                            </svg>
+                        </div>
+                        <p class="text-2xl font-bold text-green-600">$<?php echo number_format($stats['ganancia_total'], 2); ?></p>
+                        <p class="text-sm text-gray-600">Ganancia Total</p>
                     </div>
                 </div>
                 <?php endif; ?>
 
-                <!-- Footer del reporte (solo para imprimir) -->
-                <div class="hidden print:block mt-8 pt-4 border-t text-center text-sm text-gray-500">
-                    <p>Reporte generado el <?php echo date('d/m/Y H:i:s'); ?></p>
-                    <p>Usuario: <?php echo htmlspecialchars($user['nombre']); ?></p>
-                    <?php if (hasPermission('admin')): ?>
-                        <p>Tipo de usuario: Administrador</p>
-                    <?php else: ?>
-                        <p>Tienda: <?php echo htmlspecialchars($user['tienda_nombre']); ?></p>
-                    <?php endif; ?>
-                    <p><?php echo SYSTEM_NAME; ?> v<?php echo SYSTEM_VERSION; ?></p>
+                <div class="bg-white rounded-lg shadow p-4">
+                    <div class="text-center">
+                        <div class="bg-indigo-100 rounded-lg p-2 mx-auto w-12 h-12 flex items-center justify-center mb-2">
+                            <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                        </div>
+                        <p class="text-2xl font-bold text-gray-900"><?php echo $stats['dias_con_ventas']; ?></p>
+                        <p class="text-sm text-gray-600">Días con Ventas</p>
+                    </div>
+                </div>
+
+                <?php if (hasPermission('admin')): ?>
+                <div class="bg-white rounded-lg shadow p-4">
+                    <div class="text-center">
+                        <div class="bg-red-100 rounded-lg p-2 mx-auto w-12 h-12 flex items-center justify-center mb-2">
+                            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
+                            </svg>
+                        </div>
+                        <p class="text-2xl font-bold text-gray-900"><?php echo $stats['vendedores_activos']; ?></p>
+                        <p class="text-sm text-gray-600">Vendedores Activos</p>
+                    </div>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Tabla de Ventas Detalladas -->
+            <div class="bg-white rounded-lg shadow overflow-hidden">
+                <div class="p-6 border-b border-gray-200">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-lg font-semibold text-gray-900">Ventas Detalladas</h3>
+                        <div class="text-sm text-gray-500">
+                            Total de registros: <?php echo count($ventas_detalladas); ?>
+                        </div>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full" id="ventas-table">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha/Hora</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dispositivo</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cliente</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Vendedor</th>
+                                <?php if (hasPermission('admin')): ?>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tienda</th>
+                                <?php endif; ?>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Precio</th>
+                                <?php if (hasPermission('admin')): ?>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ganancia</th>
+                                <?php endif; ?>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pago</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            <?php if (empty($ventas_detalladas)): ?>
+                                <tr>
+                                    <td colspan="<?php echo hasPermission('admin') ? '9' : '7'; ?>" class="px-4 py-8 text-center">
+                                        <div class="flex flex-col items-center">
+                                            <svg class="w-12 h-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                                            </svg>
+                                            <p class="text-gray-500 text-lg font-medium">No hay ventas en el período seleccionado</p>
+                                            <p class="text-gray-400 text-sm mt-1">Intenta ajustar el rango de fechas o filtros</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php else: ?>
+                                <?php foreach($ventas_detalladas as $venta): ?>
+                                    <tr class="highlight-row">
+                                        <td class="px-4 py-4 text-sm font-mono text-blue-600">#<?php echo $venta['venta_id']; ?></td>
+                                        <td class="px-4 py-4 text-sm text-gray-900">
+                                            <div>
+                                                <p class="font-medium"><?php echo date('d/m/Y', strtotime($venta['fecha'])); ?></p>
+                                                <p class="text-xs text-gray-500"><?php echo date('H:i', strtotime($venta['hora'])); ?></p>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-4 text-sm text-gray-900">
+                                            <div>
+                                                <p class="font-medium"><?php echo htmlspecialchars($venta['modelo']); ?></p>
+                                                <p class="text-xs text-gray-500">
+                                                    <?php echo htmlspecialchars($venta['marca']); ?> - <?php echo htmlspecialchars($venta['capacidad']); ?>
+                                                    <?php if ($venta['color']): ?>- <?php echo htmlspecialchars($venta['color']); ?><?php endif; ?>
+                                                </p>
+                                                <?php if ($venta['imei1']): ?>
+                                                    <p class="text-xs text-gray-400 font-mono">IMEI: <?php echo htmlspecialchars($venta['imei1']); ?></p>
+                                                <?php endif; ?>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-4 text-sm text-gray-900">
+                                            <div>
+                                                <p class="font-medium"><?php echo htmlspecialchars($venta['cliente_nombre']); ?></p>
+                                                <?php if ($venta['cliente_telefono']): ?>
+                                                    <p class="text-xs text-gray-500"><?php echo htmlspecialchars($venta['cliente_telefono']); ?></p>
+                                                <?php endif; ?>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-4 text-sm text-gray-900">
+                                            <div>
+                                                <p class="font-medium"><?php echo htmlspecialchars($venta['vendedor_nombre']); ?></p>
+                                                <?php if (hasPermission('admin') && isset($venta['vendedor_usuario'])): ?>
+                                                    <p class="text-xs text-gray-500">@<?php echo htmlspecialchars($venta['vendedor_usuario']); ?></p>
+                                                <?php endif; ?>
+                                            </div>
+                                        </td>
+                                        <?php if (hasPermission('admin')): ?>
+                                        <td class="px-4 py-4 text-sm">
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                <?php echo htmlspecialchars($venta['tienda_nombre']); ?>
+                                            </span>
+                                        </td>
+                                        <?php endif; ?>
+                                        <td class="px-4 py-4 text-sm font-semibold text-green-600">
+                                            $<?php echo number_format($venta['precio_venta'], 2); ?>
+                                        </td>
+                                        <?php if (hasPermission('admin')): ?>
+                                        <td class="px-4 py-4 text-sm">
+                                            <?php if (isset($venta['ganancia_venta']) && $venta['ganancia_venta'] !== null): ?>
+                                                <span class="<?php echo $venta['ganancia_venta'] > 0 ? 'profit-positive' : ($venta['ganancia_venta'] < 0 ? 'profit-negative' : 'profit-neutral'); ?> font-medium">
+                                                    $<?php echo number_format($venta['ganancia_venta'], 2); ?>
+                                                </span>
+                                                <?php 
+                                                $margin = $venta['precio_venta'] > 0 ? ($venta['ganancia_venta'] / $venta['precio_venta']) * 100 : 0;
+                                                ?>
+                                                <p class="text-xs text-gray-500"><?php echo number_format($margin, 1); ?>% margen</p>
+                                            <?php else: ?>
+                                                <span class="text-gray-400">N/D</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <?php endif; ?>
+                                        <td class="px-4 py-4 text-sm">
+                                            <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium <?php 
+                                                echo $venta['metodo_pago'] === 'efectivo' ? 'bg-green-100 text-green-800' : 
+                                                    ($venta['metodo_pago'] === 'tarjeta' ? 'bg-blue-100 text-blue-800' : 
+                                                    ($venta['metodo_pago'] === 'transferencia' ? 'bg-purple-100 text-purple-800' : 'bg-yellow-100 text-yellow-800')); 
+                                            ?>">
+                                                <?php echo ucfirst($venta['metodo_pago']); ?>
+                                            </span>
+                                            <?php if (isset($venta['notas_venta']) && $venta['notas_venta']): ?>
+                                                <p class="text-xs text-gray-500 mt-1" title="<?php echo htmlspecialchars($venta['notas_venta']); ?>">
+                                                    <?php echo strlen($venta['notas_venta']) > 30 ? substr(htmlspecialchars($venta['notas_venta']), 0, 30) . '...' : htmlspecialchars($venta['notas_venta']); ?>
+                                                </p>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
                 </div>
             </div>
+
+            <!-- Resumen de productos más vendidos -->
+            <?php if (!empty($top_productos)): ?>
+            <div class="mt-8 bg-white rounded-lg shadow">
+                <div class="p-6 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold text-gray-900">Productos Más Vendidos</h3>
+                </div>
+                <div class="p-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <?php foreach($top_productos as $index => $producto): ?>
+                            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                                <div class="flex items-center">
+                                    <span class="flex items-center justify-center w-8 h-8 bg-blue-600 text-white rounded-full text-sm font-bold mr-3">
+                                        <?php echo $index + 1; ?>
+                                    </span>
+                                    <div>
+                                        <p class="font-medium text-gray-900"><?php echo htmlspecialchars($producto['modelo']); ?></p>
+                                        <p class="text-sm text-gray-600"><?php echo htmlspecialchars($producto['marca']); ?></p>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <p class="font-bold text-blue-600"><?php echo $producto['cantidad_vendida']; ?> vendidos</p>
+                                    <p class="text-sm text-green-600">$<?php echo number_format($producto['ingresos_producto'], 2); ?></p>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Footer del reporte (solo para imprimir) -->
+            <div class="hidden print:block mt-8 pt-4 border-t text-center text-sm text-gray-500">
+                <p>Reporte generado el <?php echo date('d/m/Y H:i:s'); ?></p>
+                <p>Usuario: <?php echo htmlspecialchars($user['nombre']); ?></p>
+                <?php if (hasPermission('admin')): ?>
+                    <p>Tipo de usuario: Administrador</p>
+                <?php else: ?>
+                    <p>Tienda: <?php echo htmlspecialchars($user['tienda_nombre']); ?></p>
+                <?php endif; ?>
+                <p><?php echo SYSTEM_NAME; ?> v<?php echo SYSTEM_VERSION; ?></p>
+            </div>
         </div>
-    </div>
+    </main>
 
     <script>
-        // Toggle sidebar
-        document.getElementById('sidebar-toggle').addEventListener('click', () => {
-            document.getElementById('sidebar').classList.toggle('sidebar-hidden');
-        });
-
-        // User menu toggle
-        const userMenuButton = document.getElementById('user-menu-button');
-        const userMenu = document.getElementById('user-menu');
-
-        userMenuButton.addEventListener('click', () => {
-            userMenu.classList.toggle('hidden');
-        });
-
-        document.addEventListener('click', (e) => {
-            if (!userMenuButton.contains(e.target) && !userMenu.contains(e.target)) {
-                userMenu.classList.add('hidden');
-            }
-        });
-
         // Función para reiniciar filtros
         function resetFilters() {
             const hoy = new Date();

@@ -146,6 +146,9 @@ try {
     logError("Error al obtener tiendas: " . $e->getMessage());
     $stores = [];
 }
+
+// Incluir el navbar/sidebar unificado
+require_once '../includes/navbar_unified.php';
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -157,109 +160,53 @@ try {
     <style>
         .modal { display: none; }
         .modal.show { display: flex; }
-        .sidebar-transition { transition: transform 0.3s ease-in-out; }
-        @media (max-width: 768px) {
-            .sidebar-hidden { transform: translateX(-100%); }
+        .notification { 
+            transform: translateX(100%); 
+            transition: transform 0.3s ease-in-out; 
         }
+        .notification.show { transform: translateX(0); }
     </style>
 </head>
 <body class="bg-gray-100">
-    <!-- Navigation -->
-    <nav class="bg-white shadow-sm border-b">
-        <div class="px-4 mx-auto">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center">
-                    <button id="sidebar-toggle" class="md:hidden p-2 rounded-md text-gray-600 hover:bg-gray-100">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
-                        </svg>
-                    </button>
-                    <h1 class="ml-2 text-xl font-semibold text-gray-800"><?php echo SYSTEM_NAME; ?></h1>
+    
+    <?php renderNavbar('stores'); ?>
+    
+    <!-- Contenido principal -->
+    <main class="page-content">
+        <div class="p-6">
+            <!-- Header -->
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+                <div>
+                    <h2 class="text-3xl font-bold text-gray-900">Gestión de Tiendas</h2>
+                    <p class="text-gray-600">Administrar sucursales y ubicaciones</p>
                 </div>
-                
-                <div class="flex items-center space-x-4">
-                    <span class="text-sm text-gray-600">
-                        <?php echo htmlspecialchars($user['nombre']); ?> - Administrador
-                    </span>
-                    <a href="logout.php" class="text-sm text-red-600 hover:text-red-800">Cerrar Sesión</a>
-                </div>
+                <button onclick="openCreateModal()" class="mt-4 md:mt-0 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center shadow-md transition-colors">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                    </svg>
+                    Crear Tienda
+                </button>
             </div>
-        </div>
-    </nav>
 
-    <div class="flex">
-        <!-- Sidebar -->
-        <div id="sidebar" class="sidebar-transition fixed md:relative z-40 w-64 h-screen bg-white shadow-lg md:shadow-none">
-            <div class="p-4">
-                <nav class="space-y-2">
-                    <a href="dashboard.php" class="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">
-                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z"></path>
-                        </svg>
-                        Dashboard
-                    </a>
-                    
-                    <a href="inventory.php" class="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">
-                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                        </svg>
-                        Inventario
-                    </a>
-                    
-                    <a href="sales.php" class="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">
-                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
-                        </svg>
-                        Ventas
-                    </a>
-                    
-                    <a href="reports.php" class="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100 rounded">
-                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
-                        </svg>
-                        Reportes
-                    </a>
-                    
-                    <div class="pt-4 mt-4 border-t border-gray-200">
-                        <p class="px-4 text-xs font-medium text-gray-500 uppercase">Administración</p>
-                        <a href="users.php" class="flex items-center px-4 py-2 mt-2 text-gray-700 hover:bg-gray-100 rounded">
-                            <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
-                            </svg>
-                            Usuarios
-                        </a>
-                        <a href="stores.php" class="flex items-center px-4 py-2 text-gray-700 bg-blue-50 border-r-4 border-blue-500 rounded-l">
-                            <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
-                            </svg>
-                            Tiendas
-                        </a>
-                    </div>
-                </nav>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div class="flex-1 md:ml-0">
-            <div class="p-6">
-                <!-- Header -->
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-                    <div>
-                        <h2 class="text-3xl font-bold text-gray-900">Gestión de Tiendas</h2>
-                        <p class="text-gray-600">Administrar sucursales y ubicaciones</p>
-                    </div>
-                    <button onclick="openCreateModal()" class="mt-4 md:mt-0 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center">
+            <!-- Grid de Tiendas -->
+            <?php if (empty($stores)): ?>
+                <div class="bg-white rounded-lg shadow-sm p-12 text-center">
+                    <svg class="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                    </svg>
+                    <h3 class="text-lg font-medium text-gray-900 mb-2">No hay tiendas registradas</h3>
+                    <p class="text-gray-600 mb-4">Crea la primera tienda para comenzar a gestionar tu inventario</p>
+                    <button onclick="openCreateModal()" class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
                         <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
                         </svg>
-                        Crear Tienda
+                        Crear Primera Tienda
                     </button>
                 </div>
-
-                <!-- Grid de Tiendas -->
+            <?php else: ?>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <?php foreach($stores as $store): ?>
-                        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                        <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
                             <div class="p-6">
                                 <div class="flex items-center justify-between mb-4">
                                     <h3 class="text-lg font-semibold text-gray-900"><?php echo htmlspecialchars($store['nombre']); ?></h3>
@@ -272,7 +219,7 @@ try {
                                 
                                 <?php if ($store['direccion']): ?>
                                     <div class="flex items-start mb-3">
-                                        <svg class="w-4 h-4 text-gray-400 mt-1 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <svg class="w-4 h-4 text-gray-400 mt-1 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
                                         </svg>
@@ -282,7 +229,7 @@ try {
                                 
                                 <?php if ($store['telefono']): ?>
                                     <div class="flex items-center mb-3">
-                                        <svg class="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <svg class="w-4 h-4 text-gray-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
                                         </svg>
                                         <p class="text-sm text-gray-600"><?php echo htmlspecialchars($store['telefono']); ?></p>
@@ -291,10 +238,10 @@ try {
                                 
                                 <?php if ($store['email']): ?>
                                     <div class="flex items-center mb-4">
-                                        <svg class="w-4 h-4 text-gray-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <svg class="w-4 h-4 text-gray-400 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 7.89a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
                                         </svg>
-                                        <p class="text-sm text-gray-600"><?php echo htmlspecialchars($store['email']); ?></p>
+                                        <p class="text-sm text-gray-600 truncate"><?php echo htmlspecialchars($store['email']); ?></p>
                                     </div>
                                 <?php endif; ?>
                                 
@@ -321,16 +268,23 @@ try {
                                 <!-- Acciones -->
                                 <div class="flex justify-end gap-2">
                                     <button onclick="openEditModal(<?php echo htmlspecialchars(json_encode($store)); ?>)" 
-                                            class="text-blue-600 hover:text-blue-900 p-2 rounded" title="Editar">
+                                            class="text-blue-600 hover:text-blue-900 p-2 rounded hover:bg-blue-50 transition-colors" title="Editar">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
                                         </svg>
                                     </button>
                                     <?php if ($store['total_usuarios'] == 0 && $store['total_dispositivos'] == 0): ?>
                                         <button onclick="deleteStore(<?php echo $store['id']; ?>, '<?php echo htmlspecialchars($store['nombre']); ?>')" 
-                                                class="text-red-600 hover:text-red-900 p-2 rounded" title="Eliminar">
+                                                class="text-red-600 hover:text-red-900 p-2 rounded hover:bg-red-50 transition-colors" title="Eliminar">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                            </svg>
+                                        </button>
+                                    <?php else: ?>
+                                        <button disabled class="text-gray-400 p-2 rounded cursor-not-allowed" 
+                                                title="No se puede eliminar porque tiene usuarios o dispositivos asignados">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728"></path>
                                             </svg>
                                         </button>
                                     <?php endif; ?>
@@ -339,99 +293,83 @@ try {
                         </div>
                     <?php endforeach; ?>
                 </div>
-            </div>
+            <?php endif; ?>
         </div>
-    </div>
+    </main>
 
     <!-- Modal Crear/Editar Tienda -->
     <div id="storeModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
         <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
             <div class="flex justify-between items-center mb-4">
                 <h3 id="storeModalTitle" class="text-lg font-semibold">Crear Tienda</h3>
-                <button onclick="closeStoreModal()" class="text-gray-400 hover:text-gray-600">
+                <button onclick="closeStoreModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                     </svg>
                 </button>
             </div>
             
-            <div id="storeForm" class="space-y-4">
+            <form id="storeForm" class="space-y-4" onsubmit="saveStore(event)">
                 <input type="hidden" id="storeId">
                 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Nombre de la Tienda *</label>
                     <input type="text" id="nombre" required 
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                 </div>
                 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Dirección</label>
                     <textarea id="direccion" rows="2" 
-                              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
+                              class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
                 </div>
                 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
                     <input type="tel" id="telefono" 
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                 </div>
                 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
                     <input type="email" id="email" 
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                 </div>
                 
                 <div id="statusField" class="hidden">
                     <label class="flex items-center">
-                        <input type="checkbox" id="activa" class="mr-2">
+                        <input type="checkbox" id="activa" class="mr-2 rounded">
                         <span class="text-sm font-medium text-gray-700">Tienda activa</span>
                     </label>
                 </div>
                 
-                <div class="flex justify-end gap-3">
-                    <button onclick="closeStoreModal()" 
-                            class="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg">
+                <div class="flex justify-end gap-3 pt-4">
+                    <button type="button" onclick="closeStoreModal()" 
+                            class="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
                         Cancelar
                     </button>
-                    <button onclick="saveStore()" 
-                            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
+                    <button type="submit" id="saveStoreBtn"
+                            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
                         Guardar
                     </button>
                 </div>
-            </div>
+            </form>
         </div>
     </div>
 
-    <!-- Overlay para móvil -->
-    <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-30 md:hidden hidden"></div>
-
     <script>
-        // Toggle sidebar
-        document.getElementById('sidebar-toggle').addEventListener('click', () => {
-            document.getElementById('sidebar').classList.toggle('sidebar-hidden');
-            document.getElementById('sidebar-overlay').classList.toggle('hidden');
-        });
-
-        document.getElementById('sidebar-overlay').addEventListener('click', () => {
-            document.getElementById('sidebar').classList.add('sidebar-hidden');
-            document.getElementById('sidebar-overlay').classList.add('hidden');
-        });
-
         let isEditMode = false;
 
         function openCreateModal() {
             isEditMode = false;
             document.getElementById('storeModalTitle').textContent = 'Crear Tienda';
+            document.getElementById('storeForm').reset();
             document.getElementById('storeId').value = '';
-            document.getElementById('nombre').value = '';
-            document.getElementById('direccion').value = '';
-            document.getElementById('telefono').value = '';
-            document.getElementById('email').value = '';
             document.getElementById('activa').checked = true;
             
             document.getElementById('statusField').classList.add('hidden');
             document.getElementById('storeModal').classList.add('show');
+            setTimeout(() => document.getElementById('nombre').focus(), 100);
         }
 
         function openEditModal(storeData) {
@@ -446,13 +384,16 @@ try {
             
             document.getElementById('statusField').classList.remove('hidden');
             document.getElementById('storeModal').classList.add('show');
+            setTimeout(() => document.getElementById('nombre').focus(), 100);
         }
 
         function closeStoreModal() {
             document.getElementById('storeModal').classList.remove('show');
         }
 
-        function saveStore() {
+        function saveStore(event) {
+            event.preventDefault();
+            
             const formData = new FormData();
             formData.append('action', isEditMode ? 'update_store' : 'create_store');
             
@@ -469,7 +410,7 @@ try {
                 formData.append('activa', '1');
             }
             
-            const button = event.target;
+            const button = document.getElementById('saveStoreBtn');
             const originalText = button.textContent;
             button.disabled = true;
             button.textContent = 'Guardando...';
@@ -480,14 +421,16 @@ try {
             })
             .then(response => response.json())
             .then(data => {
-                alert(data.message);
                 if (data.success) {
-                    location.reload();
+                    showNotification(data.message, 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showNotification(data.message, 'error');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error en la conexión');
+                showNotification('Error en la conexión', 'error');
             })
             .finally(() => {
                 button.disabled = false;
@@ -510,15 +453,54 @@ try {
             })
             .then(response => response.json())
             .then(data => {
-                alert(data.message);
                 if (data.success) {
-                    location.reload();
+                    showNotification(data.message, 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showNotification(data.message, 'error');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error en la conexión');
+                showNotification('Error en la conexión', 'error');
             });
+        }
+
+        // Sistema de notificaciones
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm ${
+                type === 'success' ? 'bg-green-500 text-white' :
+                type === 'error' ? 'bg-red-500 text-white' :
+                type === 'warning' ? 'bg-yellow-500 text-white' :
+                'bg-blue-500 text-white'
+            }`;
+            
+            notification.innerHTML = `
+                <div class="flex items-center">
+                    <div class="flex-1">${message}</div>
+                    <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-white/80 hover:text-white">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.classList.add('show');
+            }, 100);
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => {
+                    if (notification.parentElement) {
+                        notification.remove();
+                    }
+                }, 300);
+            }, 5000);
         }
 
         // Cerrar modal con Escape
@@ -527,7 +509,11 @@ try {
                 closeStoreModal();
             }
         });
+
+        // Inicializar
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Gestión de Tiendas cargada');
+        });
     </script>
 </body>
 </html>
-                
