@@ -17,6 +17,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
     
     switch ($_POST['action']) {
+        case 'search_devices':
+            try {
+                $search = isset($_POST['search']) ? sanitize($_POST['search']) : '';
+                
+                // Construir query de búsqueda
+                $where_conditions = ["c.estado = 'disponible'"];
+                $params = [];
+                
+                if (!empty($search)) {
+                    $where_conditions[] = "(c.modelo LIKE ? OR c.marca LIKE ? OR c.imei1 LIKE ? OR c.imei2 LIKE ? OR c.color LIKE ?)";
+                    $search_param = "%$search%";
+                    $params = array_fill(0, 5, $search_param);
+                }
+                
+                // Filtro por tienda según rol
+                if (!hasPermission('view_all_sales')) {
+                    $where_conditions[] = "c.tienda_id = ?";
+                    $params[] = $user['tienda_id'];
+                }
+                
+                $where_clause = "WHERE " . implode(" AND ", $where_conditions);
+                
+                $query = "
+                    SELECT c.*, t.nombre as tienda_nombre 
+                    FROM celulares c 
+                    LEFT JOIN tiendas t ON c.tienda_id = t.id 
+                    $where_clause 
+                    ORDER BY c.fecha_registro DESC
+                    LIMIT 50
+                ";
+                
+                $stmt = $db->prepare($query);
+                $stmt->execute($params);
+                $devices = $stmt->fetchAll();
+                
+                echo json_encode(['success' => true, 'devices' => $devices]);
+            } catch(Exception $e) {
+                logError("Error en búsqueda de dispositivos: " . $e->getMessage());
+                echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            }
+            exit;
+            
         case 'register_sale':
             try {
                 $db->beginTransaction();
@@ -90,27 +132,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 }
 
-// Obtener dispositivos disponibles para venta (solo de su tienda)
+// Obtener dispositivos disponibles para venta (solo de su tienda) - inicial
 $available_devices = [];
 try {
     if (hasPermission('view_all_sales')) {
-        // Admin puede ver todas las tiendas
         $devices_query = "
             SELECT c.*, t.nombre as tienda_nombre 
             FROM celulares c 
             LEFT JOIN tiendas t ON c.tienda_id = t.id 
             WHERE c.estado = 'disponible' 
             ORDER BY c.fecha_registro DESC
+            LIMIT 20
         ";
         $devices_stmt = $db->query($devices_query);
     } else {
-        // Vendedor solo ve su tienda
         $devices_query = "
             SELECT c.*, t.nombre as tienda_nombre 
             FROM celulares c 
             LEFT JOIN tiendas t ON c.tienda_id = t.id 
             WHERE c.estado = 'disponible' AND c.tienda_id = ? 
             ORDER BY c.fecha_registro DESC
+            LIMIT 20
         ";
         $devices_stmt = $db->prepare($devices_query);
         $devices_stmt->execute([$user['tienda_id']]);
@@ -124,7 +166,6 @@ try {
 $recent_sales = [];
 try {
     if (hasPermission('view_all_sales')) {
-        // Admin ve todas las ventas
         $sales_query = "
             SELECT v.*, c.modelo, c.marca, c.capacidad, c.imei1, 
                    t.nombre as tienda_nombre, u.nombre as vendedor_nombre
@@ -137,7 +178,6 @@ try {
         ";
         $sales_stmt = $db->query($sales_query);
     } else {
-        // Vendedor solo ve ventas de su tienda
         $sales_query = "
             SELECT v.*, c.modelo, c.marca, c.capacidad, c.imei1, 
                    t.nombre as tienda_nombre, u.nombre as vendedor_nombre
@@ -157,7 +197,7 @@ try {
     logError("Error al obtener ventas recientes: " . $e->getMessage());
 }
 
-// Estadísticas del día para motivar al vendedor
+// Estadísticas del día
 $today_stats = ['ventas' => 0, 'ingresos' => 0];
 try {
     $today = date('Y-m-d');
@@ -210,6 +250,28 @@ require_once '../includes/navbar_unified.php';
             background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
             border-left: 4px solid #f59e0b;
         }
+        .search-box {
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 10;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .search-result-highlight {
+            background-color: #fef3c7;
+        }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -251,43 +313,73 @@ require_once '../includes/navbar_unified.php';
                         </svg>
                         <div>
                             <p class="font-medium text-amber-800">Proceso de venta rápido:</p>
-                            <p class="text-sm text-amber-700">1. Selecciona un dispositivo disponible → 2. Completa los datos del cliente → 3. Confirma la venta</p>
+                            <p class="text-sm text-amber-700">1. Busca el dispositivo por modelo, marca o IMEI → 2. Selecciona el dispositivo → 3. Completa datos del cliente → 4. Confirma la venta</p>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <!-- Dispositivos Disponibles -->
+                <!-- Dispositivos Disponibles CON BUSCADOR -->
                 <div class="bg-white rounded-lg shadow">
+                    <!-- Buscador -->
+                    <div class="search-box p-4">
+                        <div class="flex items-center gap-3">
+                            <div class="flex-1 relative">
+                                <input type="text" id="deviceSearch" placeholder="Buscar por modelo, marca, IMEI o color..." 
+                                       class="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                <svg class="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                </svg>
+                            </div>
+                            <button onclick="searchDevices()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors">
+                                Buscar
+                            </button>
+                            <button onclick="clearSearch()" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors">
+                                Limpiar
+                            </button>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2" id="searchInfo">
+                            <?php if ($user['rol'] === 'vendedor'): ?>
+                                Buscando solo en <?php echo htmlspecialchars($user['tienda_nombre']); ?>
+                            <?php else: ?>
+                                Mostrando los últimos 20 dispositivos disponibles
+                            <?php endif; ?>
+                        </p>
+                    </div>
+                    
                     <div class="p-6 border-b border-gray-200 flex justify-between items-center">
                         <h3 class="text-lg font-semibold text-gray-900">
                             Dispositivos Disponibles
-                            <?php if ($user['rol'] === 'vendedor'): ?>
-                                <span class="text-sm font-normal text-gray-500">- <?php echo htmlspecialchars($user['tienda_nombre']); ?></span>
-                            <?php endif; ?>
                         </h3>
-                        <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                        <span class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full" id="deviceCount">
                             <?php echo count($available_devices); ?> disponibles
                         </span>
                     </div>
-                    <div class="p-6 max-h-96 overflow-y-auto">
-                        <?php if (empty($available_devices)): ?>
-                            <div class="text-center py-8">
-                                <svg class="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
-                                </svg>
-                                <p class="text-gray-500 font-medium">No hay dispositivos disponibles</p>
-                                <p class="text-sm text-gray-400 mt-1">
-                                    <?php if ($user['rol'] === 'admin'): ?>
-                                        Ve a <a href="inventory.php" class="text-blue-600 underline">Inventario</a> para agregar dispositivos
-                                    <?php else: ?>
-                                        Contacta al administrador para agregar dispositivos a tu tienda
-                                    <?php endif; ?>
-                                </p>
-                            </div>
-                        <?php else: ?>
-                            <div class="space-y-3">
+                    
+                    <div class="p-6 max-h-96 overflow-y-auto" id="devicesContainer">
+                        <!-- Loading spinner -->
+                        <div id="loadingSpinner" class="hidden flex justify-center items-center py-8">
+                            <div class="loading-spinner"></div>
+                        </div>
+                        
+                        <!-- Contenedor de dispositivos -->
+                        <div id="devicesList" class="space-y-3">
+                            <?php if (empty($available_devices)): ?>
+                                <div class="text-center py-8">
+                                    <svg class="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                                    </svg>
+                                    <p class="text-gray-500 font-medium">No hay dispositivos disponibles</p>
+                                    <p class="text-sm text-gray-400 mt-1">
+                                        <?php if ($user['rol'] === 'admin'): ?>
+                                            Ve a <a href="inventory.php" class="text-blue-600 underline">Inventario</a> para agregar dispositivos
+                                        <?php else: ?>
+                                            Contacta al administrador para agregar dispositivos a tu tienda
+                                        <?php endif; ?>
+                                    </p>
+                                </div>
+                            <?php else: ?>
                                 <?php foreach($available_devices as $device): ?>
                                     <div class="device-card border rounded-lg p-4 hover:border-green-300 transition-all duration-200" 
                                          onclick="selectDeviceForSale(<?php echo htmlspecialchars(json_encode($device)); ?>)"
@@ -304,6 +396,7 @@ require_once '../includes/navbar_unified.php';
                                                     <?php echo htmlspecialchars($device['marca']); ?> - <?php echo htmlspecialchars($device['capacidad']); ?>
                                                     <?php if ($device['color']): ?> - <?php echo htmlspecialchars($device['color']); ?><?php endif; ?>
                                                 </p>
+                                                <p class="text-xs text-gray-500 font-mono">IMEI: <?php echo htmlspecialchars($device['imei1']); ?></p>
                                                 <p class="text-xs text-gray-500"><?php echo ucfirst($device['condicion']); ?></p>
                                                 <?php if (hasPermission('view_all_sales')): ?>
                                                     <p class="text-xs text-blue-600 mt-1"><?php echo htmlspecialchars($device['tienda_nombre']); ?></p>
@@ -318,8 +411,8 @@ require_once '../includes/navbar_unified.php';
                                         </div>
                                     </div>
                                 <?php endforeach; ?>
-                            </div>
-                        <?php endif; ?>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 </div>
 
@@ -492,10 +585,130 @@ require_once '../includes/navbar_unified.php';
 
     <script>
         let selectedDevice = null;
+        let searchTimeout = null;
+
+        // Búsqueda de dispositivos
+        function searchDevices() {
+            const searchTerm = document.getElementById('deviceSearch').value.trim();
+            
+            // Mostrar spinner
+            document.getElementById('loadingSpinner').classList.remove('hidden');
+            document.getElementById('devicesList').style.opacity = '0.5';
+            
+            const formData = new FormData();
+            formData.append('action', 'search_devices');
+            formData.append('search', searchTerm);
+            
+            fetch('sales.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    renderDevices(data.devices);
+                    document.getElementById('deviceCount').textContent = data.devices.length + ' encontrados';
+                    
+                    if (searchTerm) {
+                        document.getElementById('searchInfo').textContent = 
+                            `Mostrando ${data.devices.length} resultados para "${searchTerm}"`;
+                    } else {
+                        document.getElementById('searchInfo').textContent = 
+                            '<?php echo $user['rol'] === 'vendedor' ? "Mostrando dispositivos de " . htmlspecialchars($user['tienda_nombre']) : "Mostrando todos los dispositivos disponibles"; ?>';
+                    }
+                } else {
+                    showNotification('Error al buscar dispositivos: ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotification('Error en la búsqueda', 'error');
+            })
+            .finally(() => {
+                document.getElementById('loadingSpinner').classList.add('hidden');
+                document.getElementById('devicesList').style.opacity = '1';
+            });
+        }
+
+        // Renderizar lista de dispositivos
+        function renderDevices(devices) {
+            const container = document.getElementById('devicesList');
+            
+            if (devices.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-8">
+                        <svg class="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                        </svg>
+                        <p class="text-gray-500 font-medium">No se encontraron dispositivos</p>
+                        <p class="text-sm text-gray-400 mt-1">Intenta con otros términos de búsqueda</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '';
+            devices.forEach(device => {
+                const showGanancia = device.precio_compra && <?php echo hasPermission('view_all_sales') ? 'true' : 'false'; ?>;
+                const showTienda = <?php echo hasPermission('view_all_sales') ? 'true' : 'false'; ?>;
+                
+                html += `
+                    <div class="device-card border rounded-lg p-4 hover:border-green-300 transition-all duration-200" 
+                         onclick='selectDeviceForSale(${JSON.stringify(device)})'
+                         data-device-id="${device.id}">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <p class="font-medium text-gray-900">${escapeHtml(device.modelo)}</p>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                        Disponible
+                                    </span>
+                                </div>
+                                <p class="text-sm text-gray-600 mb-1">
+                                    ${escapeHtml(device.marca)} - ${escapeHtml(device.capacidad)}
+                                    ${device.color ? ' - ' + escapeHtml(device.color) : ''}
+                                </p>
+                                <p class="text-xs text-gray-500 font-mono">IMEI: ${escapeHtml(device.imei1)}</p>
+                                <p class="text-xs text-gray-500">${capitalize(device.condicion)}</p>
+                                ${showTienda ? `<p class="text-xs text-blue-600 mt-1">${escapeHtml(device.tienda_nombre)}</p>` : ''}
+                            </div>
+                            <div class="text-right ml-4">
+                                <p class="font-bold text-lg text-green-600">${formatPrice(device.precio)}</p>
+                                ${showGanancia ? `<p class="text-xs text-gray-500">Ganancia: ${formatPrice(device.precio - device.precio_compra)}</p>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        // Limpiar búsqueda
+        function clearSearch() {
+            document.getElementById('deviceSearch').value = '';
+            searchDevices();
+        }
+
+        // Búsqueda en tiempo real (con debounce)
+        document.getElementById('deviceSearch').addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                searchDevices();
+            }, 500);
+        });
+
+        // Enter para buscar
+        document.getElementById('deviceSearch').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                searchDevices();
+            }
+        });
 
         function openSaleModal() {
             if (!selectedDevice) {
-                showNotification('Primero selecciona un dispositivo de la lista haciendo clic sobre él', 'warning');
+                showNotification('Primero selecciona un dispositivo de la lista', 'warning');
                 return;
             }
             document.getElementById('saleModal').classList.add('show');
@@ -520,13 +733,14 @@ require_once '../includes/navbar_unified.php';
             const selectedCard = document.querySelector(`[data-device-id="${device.id}"]`);
             if (selectedCard) {
                 selectedCard.classList.add('device-selected');
+                selectedCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
             
             // Mostrar info del dispositivo en el modal
             document.getElementById('selectedDeviceId').value = device.id;
             document.getElementById('deviceModel').textContent = device.modelo;
             document.getElementById('deviceDetails').textContent = `${device.marca} - ${device.capacidad}${device.color ? ' - ' + device.color : ''}`;
-            document.getElementById('devicePrice').textContent = `$${parseFloat(device.precio).toFixed(2)}`;
+            document.getElementById('devicePrice').textContent = `${parseFloat(device.precio).toFixed(2)}`;
             document.getElementById('deviceInfo').classList.remove('hidden');
             
             // Pre-llenar precio de venta
@@ -592,9 +806,9 @@ require_once '../includes/navbar_unified.php';
             formData.append('notas', document.getElementById('sale_notas').value);
             
             const button = event.target;
-            const originalText = button.innerHTML;
+            const originalHTML = button.innerHTML;
             button.disabled = true;
-            button.innerHTML = '<svg class="w-4 h-4 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>Procesando...';
+            button.innerHTML = '<svg class="w-4 h-4 mr-2 animate-spin inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>Procesando...';
             
             fetch('sales.php', {
                 method: 'POST',
@@ -603,22 +817,37 @@ require_once '../includes/navbar_unified.php';
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    showNotification(data.message, 'success');
+                    showNotification('✅ ' + data.message, 'success');
                     clearSaleForm();
                     closeSaleModal();
                     setTimeout(() => location.reload(), 1500);
                 } else {
-                    showNotification(data.message, 'error');
+                    showNotification('❌ ' + data.message, 'error');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                showNotification('Error en la conexión. Por favor intenta nuevamente.', 'error');
+                showNotification('❌ Error en la conexión. Por favor intenta nuevamente.', 'error');
             })
             .finally(() => {
                 button.disabled = false;
-                button.innerHTML = originalText;
+                button.innerHTML = originalHTML;
             });
+        }
+
+        // Funciones de utilidad
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function capitalize(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        function formatPrice(price) {
+            return parseFloat(price).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
         }
 
         // Sistema de notificaciones

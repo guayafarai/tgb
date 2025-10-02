@@ -9,12 +9,51 @@ requireLogin();
 $user = getCurrentUser();
 $db = getDB();
 
-// Procesar venta de productos
+// Procesar acciones AJAX
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
     
     try {
         switch ($_POST['action']) {
+            case 'search_products':
+                $search = isset($_POST['search']) ? sanitize($_POST['search']) : '';
+                
+                // Construir query de búsqueda
+                $where_conditions = ['p.activo = 1', 's.cantidad_actual > 0'];
+                $params = [];
+                
+                if (!empty($search)) {
+                    $where_conditions[] = "(p.nombre LIKE ? OR p.codigo_producto LIKE ? OR p.marca LIKE ? OR p.modelo_compatible LIKE ? OR c.nombre LIKE ?)";
+                    $search_param = "%$search%";
+                    $params = array_fill(0, 5, $search_param);
+                }
+                
+                // Filtro por tienda según rol
+                if (!hasPermission('admin')) {
+                    $where_conditions[] = "s.tienda_id = ?";
+                    $params[] = $user['tienda_id'];
+                }
+                
+                $where_clause = "WHERE " . implode(" AND ", $where_conditions);
+                
+                $query = "
+                    SELECT p.*, c.nombre as categoria_nombre, s.cantidad_actual, s.tienda_id, t.nombre as tienda_nombre
+                    FROM productos p
+                    LEFT JOIN categorias_productos c ON p.categoria_id = c.id
+                    LEFT JOIN stock_productos s ON p.id = s.producto_id
+                    LEFT JOIN tiendas t ON s.tienda_id = t.id
+                    $where_clause
+                    ORDER BY p.nombre
+                    LIMIT 50
+                ";
+                
+                $stmt = $db->prepare($query);
+                $stmt->execute($params);
+                $products = $stmt->fetchAll();
+                
+                echo json_encode(['success' => true, 'products' => $products]);
+                break;
+                
             case 'register_product_sale':
                 $producto_id = intval($_POST['producto_id']);
                 $tienda_id = intval($_POST['tienda_id']);
@@ -100,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     exit;
 }
 
-// Obtener productos disponibles para venta
+// Obtener productos disponibles para venta - inicial
 $productos_disponibles = [];
 try {
     if (hasPermission('admin')) {
@@ -112,6 +151,7 @@ try {
             LEFT JOIN tiendas t ON s.tienda_id = t.id
             WHERE p.activo = 1 AND s.cantidad_actual > 0
             ORDER BY p.nombre, t.nombre
+            LIMIT 20
         ";
         $productos_stmt = $db->query($productos_query);
     } else {
@@ -123,6 +163,7 @@ try {
             LEFT JOIN tiendas t ON s.tienda_id = t.id
             WHERE p.activo = 1 AND s.cantidad_actual > 0 AND s.tienda_id = ?
             ORDER BY p.nombre
+            LIMIT 20
         ";
         $productos_stmt = $db->prepare($productos_query);
         $productos_stmt->execute([$user['tienda_id']]);
@@ -216,6 +257,25 @@ require_once '../includes/navbar_unified.php';
         .stats-card {
             background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
         }
+        .search-box {
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 10;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #8b5cf6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -252,15 +312,41 @@ require_once '../includes/navbar_unified.php';
                         </svg>
                         <div>
                             <p class="font-medium text-purple-800">Venta de productos:</p>
-                            <p class="text-sm text-purple-700">1. Selecciona un producto disponible → 2. Ajusta cantidad y precio → 3. Completa datos del cliente → 4. Confirma la venta</p>
+                            <p class="text-sm text-purple-700">1. Busca el producto por nombre, código o categoría → 2. Selecciona el producto → 3. Ajusta cantidad y precio → 4. Completa datos del cliente → 5. Confirma la venta</p>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <!-- Productos Disponibles -->
+                <!-- Productos Disponibles CON BUSCADOR -->
                 <div class="bg-white rounded-lg shadow">
+                    <!-- Buscador -->
+                    <div class="search-box p-4">
+                        <div class="flex items-center gap-3">
+                            <div class="flex-1 relative">
+                                <input type="text" id="productSearch" placeholder="Buscar por nombre, código, marca o categoría..." 
+                                       class="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
+                                <svg class="w-5 h-5 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                                </svg>
+                            </div>
+                            <button onclick="searchProducts()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors">
+                                Buscar
+                            </button>
+                            <button onclick="clearProductSearch()" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition-colors">
+                                Limpiar
+                            </button>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2" id="searchProductInfo">
+                            <?php if ($user['rol'] === 'vendedor'): ?>
+                                Buscando solo en <?php echo htmlspecialchars($user['tienda_nombre']); ?>
+                            <?php else: ?>
+                                Mostrando los últimos 20 productos disponibles
+                            <?php endif; ?>
+                        </p>
+                    </div>
+                    
                     <div class="p-6 border-b border-gray-200 flex justify-between items-center">
                         <h3 class="text-lg font-semibold text-gray-900">
                             Productos Disponibles
@@ -268,27 +354,34 @@ require_once '../includes/navbar_unified.php';
                                 <span class="text-sm font-normal text-gray-500">- <?php echo htmlspecialchars($user['tienda_nombre']); ?></span>
                             <?php endif; ?>
                         </h3>
-                        <span class="bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                        <span class="bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-0.5 rounded-full" id="productCount">
                             <?php echo count($productos_disponibles); ?> disponibles
                         </span>
                     </div>
-                    <div class="p-6 max-h-96 overflow-y-auto">
-                        <?php if (empty($productos_disponibles)): ?>
-                            <div class="text-center py-8">
-                                <svg class="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
-                                </svg>
-                                <p class="text-gray-500 font-medium">No hay productos con stock</p>
-                                <p class="text-sm text-gray-400 mt-1">
-                                    <?php if ($user['rol'] === 'admin'): ?>
-                                        Ve a <a href="products.php" class="text-purple-600 underline">Productos</a> para agregar stock
-                                    <?php else: ?>
-                                        Contacta al administrador para reponer stock
-                                    <?php endif; ?>
-                                </p>
-                            </div>
-                        <?php else: ?>
-                            <div class="space-y-3">
+                    
+                    <div class="p-6 max-h-96 overflow-y-auto" id="productsContainer">
+                        <!-- Loading spinner -->
+                        <div id="loadingProductSpinner" class="hidden flex justify-center items-center py-8">
+                            <div class="loading-spinner"></div>
+                        </div>
+                        
+                        <!-- Contenedor de productos -->
+                        <div id="productsList" class="space-y-3">
+                            <?php if (empty($productos_disponibles)): ?>
+                                <div class="text-center py-8">
+                                    <svg class="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                                    </svg>
+                                    <p class="text-gray-500 font-medium">No hay productos con stock</p>
+                                    <p class="text-sm text-gray-400 mt-1">
+                                        <?php if ($user['rol'] === 'admin'): ?>
+                                            Ve a <a href="products.php" class="text-purple-600 underline">Productos</a> para agregar stock
+                                        <?php else: ?>
+                                            Contacta al administrador para reponer stock
+                                        <?php endif; ?>
+                                    </p>
+                                </div>
+                            <?php else: ?>
                                 <?php foreach($productos_disponibles as $producto): ?>
                                     <div class="product-card border rounded-lg p-4 hover:border-purple-300 transition-all duration-200" 
                                          onclick="selectProductForSale(<?php echo htmlspecialchars(json_encode($producto)); ?>)"
@@ -340,8 +433,8 @@ require_once '../includes/navbar_unified.php';
                                         </div>
                                     </div>
                                 <?php endforeach; ?>
-                            </div>
-                        <?php endif; ?>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 </div>
 
@@ -430,6 +523,7 @@ require_once '../includes/navbar_unified.php';
             <form id="productSaleForm" class="space-y-4">
                 <input type="hidden" id="selectedProductId">
                 <input type="hidden" id="selectedTiendaId">
+                <input type="hidden" id="maxStock">
                 
                 <!-- Info del producto -->
                 <div id="productInfo" class="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 p-4 rounded-lg hidden">
@@ -453,6 +547,7 @@ require_once '../includes/navbar_unified.php';
                             <label class="block text-sm font-medium text-gray-700 mb-1">Cantidad *</label>
                             <input type="number" id="cantidad" min="1" required 
                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
+                            <p class="text-xs text-gray-500 mt-1" id="cantidadInfo"></p>
                         </div>
                         
                         <div>
@@ -528,3 +623,410 @@ require_once '../includes/navbar_unified.php';
                         </div>
                     </div>
                 </div>
+                
+                <div class="flex justify-end gap-3 pt-4 border-t">
+                    <button type="button" onclick="closeProductSaleModal()" 
+                            class="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                        Cancelar
+                    </button>
+                    <button type="button" onclick="registerProductSale()" 
+                            class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                        Confirmar Venta
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let selectedProduct = null;
+        let productSearchTimeout = null;
+
+        // Búsqueda de productos
+        function searchProducts() {
+            const searchTerm = document.getElementById('productSearch').value.trim();
+            
+            document.getElementById('loadingProductSpinner').classList.remove('hidden');
+            document.getElementById('productsList').style.opacity = '0.5';
+            
+            const formData = new FormData();
+            formData.append('action', 'search_products');
+            formData.append('search', searchTerm);
+            
+            fetch('product_sales.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    renderProducts(data.products);
+                    document.getElementById('productCount').textContent = data.products.length + ' encontrados';
+                    
+                    if (searchTerm) {
+                        document.getElementById('searchProductInfo').textContent = 
+                            `Mostrando ${data.products.length} resultados para "${searchTerm}"`;
+                    } else {
+                        document.getElementById('searchProductInfo').textContent = 
+                            '<?php echo $user['rol'] === 'vendedor' ? "Mostrando productos de " . htmlspecialchars($user['tienda_nombre']) : "Mostrando todos los productos disponibles"; ?>';
+                    }
+                } else {
+                    showNotification('Error al buscar productos: ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotification('Error en la búsqueda', 'error');
+            })
+            .finally(() => {
+                document.getElementById('loadingProductSpinner').classList.add('hidden');
+                document.getElementById('productsList').style.opacity = '1';
+            });
+        }
+
+        // Renderizar lista de productos
+        function renderProducts(products) {
+            const container = document.getElementById('productsList');
+            
+            if (products.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-8">
+                        <svg class="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                        </svg>
+                        <p class="text-gray-500 font-medium">No se encontraron productos</p>
+                        <p class="text-sm text-gray-400 mt-1">Intenta con otros términos de búsqueda</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '';
+            const showTienda = <?php echo hasPermission('admin') ? 'true' : 'false'; ?>;
+            
+            products.forEach(product => {
+                html += `
+                    <div class="product-card border rounded-lg p-4 hover:border-purple-300 transition-all duration-200" 
+                         onclick='selectProductForSale(${JSON.stringify(product)})'
+                         data-product-id="${product.id}-${product.tienda_id}">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <p class="font-medium text-gray-900">${escapeHtml(product.nombre)}</p>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                        Stock: ${product.cantidad_actual}
+                                    </span>
+                                </div>
+                                ${product.codigo_producto ? `
+                                    <p class="text-xs text-gray-500 font-mono bg-gray-100 inline-block px-2 py-1 rounded mb-1">
+                                        ${escapeHtml(product.codigo_producto)}
+                                    </p>
+                                ` : ''}
+                                <div class="flex flex-wrap gap-2 text-xs text-gray-600">
+                                    ${product.marca ? `<span class="bg-blue-100 text-blue-800 px-2 py-1 rounded">${escapeHtml(product.marca)}</span>` : ''}
+                                    ${product.categoria_nombre ? `<span class="bg-gray-100 text-gray-800 px-2 py-1 rounded">${escapeHtml(product.categoria_nombre)}</span>` : ''}
+                                </div>
+                                ${product.modelo_compatible ? `<p class="text-xs text-gray-500 mt-1">Compatible: ${escapeHtml(product.modelo_compatible)}</p>` : ''}
+                                ${showTienda ? `<p class="text-xs text-blue-600 mt-1">${escapeHtml(product.tienda_nombre)}</p>` : ''}
+                            </div>
+                            <div class="text-right ml-4">
+                                <p class="font-bold text-lg text-purple-600">${formatPrice(product.precio_venta)}</p>
+                                <p class="text-xs text-gray-500">por unidad</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        // Limpiar búsqueda
+        function clearProductSearch() {
+            document.getElementById('productSearch').value = '';
+            searchProducts();
+        }
+
+        // Búsqueda en tiempo real (con debounce)
+        document.getElementById('productSearch').addEventListener('input', function() {
+            clearTimeout(productSearchTimeout);
+            productSearchTimeout = setTimeout(() => {
+                searchProducts();
+            }, 500);
+        });
+
+        // Enter para buscar
+        document.getElementById('productSearch').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                searchProducts();
+            }
+        });
+
+        function selectProductForSale(product) {
+            selectedProduct = product;
+            
+            // Limpiar selección previa
+            document.querySelectorAll('.product-card').forEach(el => {
+                el.classList.remove('product-selected');
+            });
+            
+            // Marcar producto seleccionado
+            const selectedCard = document.querySelector(`[data-product-id="${product.id}-${product.tienda_id}"]`);
+            if (selectedCard) {
+                selectedCard.classList.add('product-selected');
+                selectedCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+            
+            // Llenar información en el modal
+            document.getElementById('selectedProductId').value = product.id;
+            document.getElementById('selectedTiendaId').value = product.tienda_id;
+            document.getElementById('maxStock').value = product.cantidad_actual;
+            
+            document.getElementById('productName').textContent = product.nombre;
+            document.getElementById('productDetails').textContent = 
+                (product.marca || '') + (product.categoria_nombre ? ' - ' + product.categoria_nombre : '');
+            document.getElementById('productStock').textContent = `Stock disponible: ${product.cantidad_actual} unidades`;
+            document.getElementById('productPrice').textContent = `${parseFloat(product.precio_venta).toFixed(2)} c/u`;
+            document.getElementById('productInfo').classList.remove('hidden');
+            
+            // Pre-llenar valores
+            document.getElementById('cantidad').value = 1;
+            document.getElementById('cantidad').max = product.cantidad_actual;
+            document.getElementById('precio_unitario').value = product.precio_venta;
+            document.getElementById('descuento').value = 0;
+            document.getElementById('cantidadInfo').textContent = `Máximo disponible: ${product.cantidad_actual}`;
+            
+            // Calcular total inicial
+            calculateTotal();
+            
+            // Abrir modal
+            document.getElementById('productSaleModal').classList.add('show');
+            setTimeout(() => document.getElementById('cantidad').focus(), 100);
+        }
+
+        function closeProductSaleModal() {
+            document.getElementById('productSaleModal').classList.remove('show');
+            clearProductSaleForm();
+            clearProductSelection();
+        }
+
+        function clearProductSelection() {
+            selectedProduct = null;
+            document.querySelectorAll('.product-card').forEach(el => {
+                el.classList.remove('product-selected');
+            });
+            document.getElementById('productInfo').classList.add('hidden');
+        }
+
+        function clearProductSaleForm() {
+            document.getElementById('cliente_nombre').value = '';
+            document.getElementById('cliente_telefono').value = '';
+            document.getElementById('cliente_email').value = '';
+            document.getElementById('cantidad').value = 1;
+            document.getElementById('precio_unitario').value = '';
+            document.getElementById('descuento').value = 0;
+            document.getElementById('metodo_pago').value = 'efectivo';
+            document.getElementById('notas').value = '';
+            document.getElementById('totalCalculado').textContent = '$0.00';
+        }
+
+        // Calcular total automáticamente
+        function calculateTotal() {
+            const cantidad = parseFloat(document.getElementById('cantidad').value) || 0;
+            const precioUnitario = parseFloat(document.getElementById('precio_unitario').value) || 0;
+            const descuento = parseFloat(document.getElementById('descuento').value) || 0;
+            
+            const subtotal = cantidad * precioUnitario;
+            const total = subtotal - descuento;
+            
+            document.getElementById('totalCalculado').textContent = `${total.toFixed(2)}`;
+            
+            // Validar descuento
+            if (descuento > subtotal) {
+                document.getElementById('descuento').classList.add('border-red-500');
+                document.getElementById('totalCalculado').classList.add('text-red-600');
+                document.getElementById('totalCalculado').classList.remove('text-green-700');
+            } else {
+                document.getElementById('descuento').classList.remove('border-red-500');
+                document.getElementById('totalCalculado').classList.remove('text-red-600');
+                document.getElementById('totalCalculado').classList.add('text-green-700');
+            }
+        }
+
+        // Event listeners para calcular total en tiempo real
+        document.getElementById('cantidad').addEventListener('input', function() {
+            const maxStock = parseInt(document.getElementById('maxStock').value);
+            if (parseInt(this.value) > maxStock) {
+                this.value = maxStock;
+                showNotification(`Stock máximo disponible: ${maxStock}`, 'warning');
+            }
+            calculateTotal();
+        });
+
+        document.getElementById('precio_unitario').addEventListener('input', calculateTotal);
+        document.getElementById('descuento').addEventListener('input', calculateTotal);
+
+        function registerProductSale() {
+            if (!selectedProduct) {
+                showNotification('No se ha seleccionado un producto', 'error');
+                return;
+            }
+            
+            const cliente_nombre = document.getElementById('cliente_nombre').value.trim();
+            const cantidad = parseInt(document.getElementById('cantidad').value);
+            const precio_unitario = parseFloat(document.getElementById('precio_unitario').value);
+            const descuento = parseFloat(document.getElementById('descuento').value) || 0;
+            const maxStock = parseInt(document.getElementById('maxStock').value);
+            
+            // Validaciones
+            if (!cliente_nombre) {
+                showNotification('Por favor ingresa el nombre del cliente', 'warning');
+                document.getElementById('cliente_nombre').focus();
+                return;
+            }
+            
+            if (!cantidad || cantidad <= 0) {
+                showNotification('Por favor ingresa una cantidad válida', 'warning');
+                document.getElementById('cantidad').focus();
+                return;
+            }
+            
+            if (cantidad > maxStock) {
+                showNotification(`Stock insuficiente. Máximo disponible: ${maxStock}`, 'error');
+                document.getElementById('cantidad').focus();
+                return;
+            }
+            
+            if (!precio_unitario || precio_unitario <= 0) {
+                showNotification('Por favor ingresa un precio válido', 'warning');
+                document.getElementById('precio_unitario').focus();
+                return;
+            }
+            
+            const total = (cantidad * precio_unitario) - descuento;
+            if (total < 0) {
+                showNotification('El descuento no puede ser mayor al total', 'error');
+                document.getElementById('descuento').focus();
+                return;
+            }
+            
+            // Confirmar venta
+            const confirmMessage = `¿Confirmar venta?\n\nProducto: ${selectedProduct.nombre}\nCantidad: ${cantidad} unidades\nCliente: ${cliente_nombre}\nTotal: ${total.toFixed(2)}`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('action', 'register_product_sale');
+            formData.append('producto_id', selectedProduct.id);
+            formData.append('tienda_id', selectedProduct.tienda_id);
+            formData.append('cantidad', cantidad);
+            formData.append('precio_unitario', precio_unitario);
+            formData.append('descuento', descuento);
+            formData.append('cliente_nombre', cliente_nombre);
+            formData.append('cliente_telefono', document.getElementById('cliente_telefono').value);
+            formData.append('cliente_email', document.getElementById('cliente_email').value);
+            formData.append('metodo_pago', document.getElementById('metodo_pago').value);
+            formData.append('notas', document.getElementById('notas').value);
+            
+            const button = event.target;
+            const originalHTML = button.innerHTML;
+            button.disabled = true;
+            button.innerHTML = '<svg class="w-4 h-4 mr-2 animate-spin inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>Procesando...';
+            
+            fetch('product_sales.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification('✅ ' + data.message, 'success');
+                    clearProductSaleForm();
+                    closeProductSaleModal();
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showNotification('❌ ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotification('❌ Error en la conexión. Por favor intenta nuevamente.', 'error');
+            })
+            .finally(() => {
+                button.disabled = false;
+                button.innerHTML = originalHTML;
+            });
+        }
+
+        // Funciones de utilidad
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatPrice(price) {
+            return parseFloat(price).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        }
+
+        // Sistema de notificaciones
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            const bgColors = {
+                'success': 'bg-green-500',
+                'error': 'bg-red-500', 
+                'warning': 'bg-yellow-500',
+                'info': 'bg-blue-500'
+            };
+            
+            notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm transition-all duration-300 ${bgColors[type]} text-white`;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                setTimeout(() => notification.remove(), 300);
+            }, 4000);
+        }
+
+        // Cerrar modal con Escape
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeProductSaleModal();
+            }
+        });
+
+        // Validaciones en tiempo real
+        document.getElementById('cantidad').addEventListener('input', function() {
+            if (this.value < 1) this.value = 1;
+        });
+
+        document.getElementById('precio_unitario').addEventListener('input', function() {
+            if (this.value < 0) this.value = 0;
+        });
+
+        document.getElementById('descuento').addEventListener('input', function() {
+            if (this.value < 0) this.value = 0;
+        });
+
+        // Auto-completar email basado en el nombre
+        document.getElementById('cliente_nombre').addEventListener('blur', function() {
+            const nombre = this.value.trim();
+            const emailField = document.getElementById('cliente_email');
+            
+            if (nombre && !emailField.value) {
+                const sugerencia = nombre.toLowerCase().replace(/\s+/g, '.') + '@ejemplo.com';
+                emailField.placeholder = `Ej: ${sugerencia}`;
+            }
+        });
+    </script>
+</body>
+</html>
