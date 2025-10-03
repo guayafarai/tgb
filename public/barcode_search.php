@@ -31,7 +31,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $item_id = intval($_POST['item_id']);
                 
                 if ($tipo === 'celular') {
-                    // Obtener tienda del celular
                     $stmt = $db->prepare("SELECT tienda_id FROM celulares WHERE id = ?");
                     $stmt->execute([$item_id]);
                     $celular = $stmt->fetch();
@@ -42,12 +41,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     
                     $codigo_barras = $barcodeGen->generateCelularBarcode($celular['tienda_id']);
                     
-                    // Actualizar celular con código de barras
                     $update_stmt = $db->prepare("UPDATE celulares SET codigo_barras = ? WHERE id = ?");
                     $update_stmt->execute([$codigo_barras, $item_id]);
                     
                 } elseif ($tipo === 'producto') {
-                    // Obtener categoría del producto
                     $stmt = $db->prepare("SELECT categoria_id FROM productos WHERE id = ?");
                     $stmt->execute([$item_id]);
                     $producto = $stmt->fetch();
@@ -58,7 +55,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     
                     $codigo_barras = $barcodeGen->generateProductoBarcode($producto['categoria_id'] ?? 0);
                     
-                    // Actualizar producto con código de barras
                     $update_stmt = $db->prepare("UPDATE productos SET codigo_barras = ? WHERE id = ?");
                     $update_stmt->execute([$codigo_barras, $item_id]);
                 }
@@ -69,19 +65,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     'success' => true,
                     'codigo_barras' => $codigo_barras,
                     'message' => 'Código de barras generado correctamente'
-                ]);
-                break;
-                
-            case 'print_label':
-                $codigo_barras = sanitize($_POST['codigo_barras']);
-                $titulo = sanitize($_POST['titulo']);
-                $precio = isset($_POST['precio']) ? floatval($_POST['precio']) : null;
-                
-                $html = $barcodeGen->generarEtiqueta($codigo_barras, $titulo, $precio);
-                
-                echo json_encode([
-                    'success' => true,
-                    'html' => $html
                 ]);
                 break;
                 
@@ -100,7 +83,6 @@ if (isset($_GET['codigo'])) {
     $search_result = $barcodeGen->buscarPorCodigoBarras($codigo_buscado);
 }
 
-// Incluir el navbar/sidebar unificado
 require_once '../includes/navbar_unified.php';
 ?>
 <!DOCTYPE html>
@@ -133,16 +115,13 @@ require_once '../includes/navbar_unified.php';
     
     <?php renderNavbar('barcode_search'); ?>
     
-    <!-- Contenido principal -->
     <main class="page-content">
         <div class="p-6">
-            <!-- Header -->
             <div class="mb-6">
                 <h2 class="text-3xl font-bold text-gray-900">Búsqueda por Código de Barras</h2>
                 <p class="text-gray-600">Escanea o ingresa el código de barras para buscar productos y celulares</p>
             </div>
 
-            <!-- Búsqueda por código de barras -->
             <div class="bg-white rounded-lg shadow-lg p-8 mb-8">
                 <div class="max-w-2xl mx-auto">
                     <div class="text-center mb-6">
@@ -187,12 +166,8 @@ require_once '../includes/navbar_unified.php';
                 </div>
             </div>
 
-            <!-- Resultados de búsqueda -->
-            <div id="searchResults" class="hidden">
-                <!-- Los resultados se cargarán aquí dinámicamente -->
-            </div>
+            <div id="searchResults" class="hidden"></div>
 
-            <!-- Historial de búsquedas recientes -->
             <div class="bg-white rounded-lg shadow p-6">
                 <h3 class="text-lg font-semibold text-gray-900 mb-4">Búsquedas Recientes</h3>
                 <div id="recentSearches" class="space-y-2">
@@ -202,28 +177,65 @@ require_once '../includes/navbar_unified.php';
         </div>
     </main>
 
-    <!-- Modal de visualización de código de barras -->
-    <div id="barcodeModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+    <!-- Modal de Impresión -->
+    <div id="printModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
         <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-semibold">Código de Barras</h3>
-                <button onclick="closeBarcodeModal()" class="text-gray-400 hover:text-gray-600">
+                <h3 class="text-lg font-semibold">Imprimir Etiqueta NES</h3>
+                <button onclick="closePrintModal()" class="text-gray-400 hover:text-gray-600">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                     </svg>
                 </button>
             </div>
             
-            <div id="barcodeDisplay" class="text-center">
-                <!-- El código de barras se mostrará aquí -->
+            <div class="mb-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                <div class="flex items-center gap-3">
+                    <div class="bg-purple-100 p-2 rounded-lg">
+                        <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-purple-900">NES NT-P58-X</p>
+                        <p class="text-sm text-purple-700">Impresora térmica 58mm</p>
+                    </div>
+                </div>
             </div>
             
-            <div class="mt-4 flex gap-3">
-                <button onclick="printBarcode()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
-                    Imprimir Etiqueta
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Producto</label>
+                    <input type="text" id="print_titulo" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Código</label>
+                        <input type="text" id="print_codigo" readonly class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Precio</label>
+                        <input type="number" id="print_precio" step="0.01" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Cantidad de copias</label>
+                    <input type="number" id="print_cantidad" value="1" min="1" max="50" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                </div>
+            </div>
+            
+            <div class="flex gap-3 mt-6">
+                <button onclick="executePrint()" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded-lg transition-colors flex items-center justify-center">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
+                    </svg>
+                    Imprimir
                 </button>
-                <button onclick="closeBarcodeModal()" class="px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-lg transition-colors">
-                    Cerrar
+                <button onclick="closePrintModal()" class="px-4 py-3 bg-gray-300 hover:bg-gray-400 text-gray-700 rounded-lg transition-colors">
+                    Cancelar
                 </button>
             </div>
         </div>
@@ -258,7 +270,6 @@ require_once '../includes/navbar_unified.php';
             `).join('');
         }
 
-        // Agregar búsqueda al historial
         function addToRecentSearches(codigo, tipo) {
             const search = {
                 codigo: codigo,
@@ -266,28 +277,18 @@ require_once '../includes/navbar_unified.php';
                 fecha: new Date().toLocaleString('es-PE')
             };
             
-            // Eliminar duplicados
             recentSearches = recentSearches.filter(s => s.codigo !== codigo);
-            
-            // Agregar al inicio
             recentSearches.unshift(search);
-            
-            // Mantener solo las últimas 10
             recentSearches = recentSearches.slice(0, 10);
-            
-            // Guardar en localStorage
             localStorage.setItem('recentBarcodeSearches', JSON.stringify(recentSearches));
-            
             updateRecentSearches();
         }
 
-        // Buscar por código
         function searchByCode(codigo) {
             document.getElementById('barcodeInput').value = codigo;
             document.getElementById('barcodeSearchForm').dispatchEvent(new Event('submit'));
         }
 
-        // Enviar búsqueda
         document.getElementById('barcodeSearchForm').addEventListener('submit', function(e) {
             e.preventDefault();
             
@@ -386,39 +387,12 @@ require_once '../includes/navbar_unified.php';
                                             <dt class="text-sm text-gray-600">Color:</dt>
                                             <dd class="text-sm font-medium text-gray-900">${item.color || 'N/A'}</dd>
                                         </div>
-                                        <div class="flex justify-between">
-                                            <dt class="text-sm text-gray-600">Condición:</dt>
-                                            <dd class="text-sm font-medium text-gray-900">${item.condicion.charAt(0).toUpperCase() + item.condicion.slice(1)}</dd>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <dt class="text-sm text-gray-600">IMEI 1:</dt>
-                                            <dd class="text-sm font-medium text-gray-900 font-mono">${item.imei1}</dd>
-                                        </div>
-                                        ${item.imei2 ? `
-                                        <div class="flex justify-between">
-                                            <dt class="text-sm text-gray-600">IMEI 2:</dt>
-                                            <dd class="text-sm font-medium text-gray-900 font-mono">${item.imei2}</dd>
-                                        </div>
-                                        ` : ''}
                                     </dl>
                                 </div>
                                 
                                 <div>
                                     <h4 class="font-semibold text-gray-900 mb-3">Estado y Ubicación</h4>
                                     <dl class="space-y-2">
-                                        <div class="flex justify-between items-center">
-                                            <dt class="text-sm text-gray-600">Estado:</dt>
-                                            <dd>
-                                                <span class="inline-flex px-3 py-1 text-xs font-semibold rounded-full ${
-                                                    item.estado === 'disponible' ? 'bg-green-100 text-green-800' :
-                                                    item.estado === 'vendido' ? 'bg-red-100 text-red-800' :
-                                                    item.estado === 'reservado' ? 'bg-yellow-100 text-yellow-800' :
-                                                    'bg-blue-100 text-blue-800'
-                                                }">
-                                                    ${item.estado.charAt(0).toUpperCase() + item.estado.slice(1)}
-                                                </span>
-                                            </dd>
-                                        </div>
                                         <div class="flex justify-between">
                                             <dt class="text-sm text-gray-600">Tienda:</dt>
                                             <dd class="text-sm font-medium text-gray-900">${item.tienda_nombre}</dd>
@@ -427,37 +401,21 @@ require_once '../includes/navbar_unified.php';
                                             <dt class="text-sm text-gray-600">Precio:</dt>
                                             <dd class="text-lg font-bold text-green-600">${parseFloat(item.precio).toFixed(2)}</dd>
                                         </div>
-                                        <div class="flex justify-between">
-                                            <dt class="text-sm text-gray-600">Fecha Registro:</dt>
-                                            <dd class="text-sm font-medium text-gray-900">${new Date(item.fecha_registro).toLocaleDateString('es-PE')}</dd>
-                                        </div>
                                     </dl>
-                                    
-                                    ${item.notas ? `
-                                    <div class="mt-4 p-3 bg-gray-50 rounded-lg">
-                                        <p class="text-xs text-gray-600 font-medium mb-1">Notas:</p>
-                                        <p class="text-sm text-gray-700">${item.notas}</p>
-                                    </div>
-                                    ` : ''}
                                 </div>
                             </div>
                             
                             <div class="mt-6 flex gap-3">
-                                <button onclick="showBarcodeModal('${item.codigo_barras}')" 
-                                        class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center justify-center">
+                                <button onclick="openPrintModal('${item.codigo_barras}', '${escapeHtml(item.modelo + ' ' + item.capacidad)}', ${item.precio})" 
+                                        class="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center justify-center">
                                     <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
                                     </svg>
-                                    Ver Código de Barras
+                                    Imprimir Etiqueta
                                 </button>
                                 <a href="inventory.php" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors flex items-center justify-center">
                                     Ir al Inventario
                                 </a>
-                                ${item.estado === 'disponible' ? `
-                                <a href="sales.php" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors flex items-center justify-center">
-                                    Vender
-                                </a>
-                                ` : ''}
                             </div>
                         </div>
                     </div>
@@ -492,107 +450,39 @@ require_once '../includes/navbar_unified.php';
                                             <dt class="text-sm text-gray-600">Nombre:</dt>
                                             <dd class="text-sm font-medium text-gray-900">${item.nombre}</dd>
                                         </div>
-                                        ${item.codigo_producto ? `
-                                        <div class="flex justify-between">
-                                            <dt class="text-sm text-gray-600">SKU:</dt>
-                                            <dd class="text-sm font-medium text-gray-900 font-mono">${item.codigo_producto}</dd>
-                                        </div>
-                                        ` : ''}
                                         <div class="flex justify-between">
                                             <dt class="text-sm text-gray-600">Tipo:</dt>
-                                            <dd class="text-sm font-medium text-gray-900">${item.tipo.charAt(0).toUpperCase() + item.tipo.slice(1)}</dd>
+                                            <dd class="text-sm font-medium text-gray-900">${item.tipo}</dd>
                                         </div>
-                                        ${item.categoria_nombre ? `
-                                        <div class="flex justify-between">
-                                            <dt class="text-sm text-gray-600">Categoría:</dt>
-                                            <dd class="text-sm font-medium text-gray-900">${item.categoria_nombre}</dd>
-                                        </div>
-                                        ` : ''}
-                                        ${item.marca ? `
-                                        <div class="flex justify-between">
-                                            <dt class="text-sm text-gray-600">Marca:</dt>
-                                            <dd class="text-sm font-medium text-gray-900">${item.marca}</dd>
-                                        </div>
-                                        ` : ''}
-                                        ${item.modelo_compatible ? `
-                                        <div class="flex justify-between">
-                                            <dt class="text-sm text-gray-600">Compatible con:</dt>
-                                            <dd class="text-sm font-medium text-gray-900">${item.modelo_compatible}</dd>
-                                        </div>
-                                        ` : ''}
                                     </dl>
-                                    
-                                    ${item.descripcion ? `
-                                    <div class="mt-4 p-3 bg-gray-50 rounded-lg">
-                                        <p class="text-xs text-gray-600 font-medium mb-1">Descripción:</p>
-                                        <p class="text-sm text-gray-700">${item.descripcion}</p>
-                                    </div>
-                                    ` : ''}
                                 </div>
                                 
                                 <div>
-                                    <h4 class="font-semibold text-gray-900 mb-3">Precios y Stock</h4>
+                                    <h4 class="font-semibold text-gray-900 mb-3">Precio y Stock</h4>
                                     <dl class="space-y-2">
                                         <div class="flex justify-between">
-                                            <dt class="text-sm text-gray-600">Precio Venta:</dt>
+                                            <dt class="text-sm text-gray-600">Precio:</dt>
                                             <dd class="text-lg font-bold text-green-600">${parseFloat(item.precio_venta).toFixed(2)}</dd>
                                         </div>
-                                        ${item.precio_compra ? `
                                         <div class="flex justify-between">
-                                            <dt class="text-sm text-gray-600">Precio Compra:</dt>
-                                            <dd class="text-sm font-medium text-gray-900">${parseFloat(item.precio_compra).toFixed(2)}</dd>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <dt class="text-sm text-gray-600">Margen:</dt>
-                                            <dd class="text-sm font-medium text-green-600">${(parseFloat(item.precio_venta) - parseFloat(item.precio_compra)).toFixed(2)}</dd>
-                                        </div>
-                                        ` : ''}
-                                        <div class="flex justify-between items-center">
-                                            <dt class="text-sm text-gray-600">Stock Total:</dt>
-                                            <dd>
-                                                <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full ${
-                                                    item.stock_total > item.minimo_stock ? 'bg-green-100 text-green-800' :
-                                                    item.stock_total > 0 ? 'bg-yellow-100 text-yellow-800' :
-                                                    'bg-red-100 text-red-800'
-                                                }">
-                                                    ${item.stock_total || 0} unidades
-                                                </span>
-                                            </dd>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <dt class="text-sm text-gray-600">Stock Mínimo:</dt>
-                                            <dd class="text-sm font-medium text-gray-900">${item.minimo_stock} unidades</dd>
-                                        </div>
-                                        <div class="flex justify-between items-center">
-                                            <dt class="text-sm text-gray-600">Estado:</dt>
-                                            <dd>
-                                                <span class="inline-flex px-3 py-1 text-xs font-semibold rounded-full ${
-                                                    item.activo ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                                                }">
-                                                    ${item.activo ? 'Activo' : 'Inactivo'}
-                                                </span>
-                                            </dd>
+                                            <dt class="text-sm text-gray-600">Stock:</dt>
+                                            <dd class="text-sm font-medium text-gray-900">${item.stock_total || 0} unidades</dd>
                                         </div>
                                     </dl>
                                 </div>
                             </div>
                             
                             <div class="mt-6 flex gap-3">
-                                <button onclick="showBarcodeModal('${item.codigo_barras}')" 
+                                <button onclick="openPrintModal('${item.codigo_barras}', '${escapeHtml(item.nombre)}', ${item.precio_venta})" 
                                         class="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center justify-center">
                                     <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
                                     </svg>
-                                    Ver Código de Barras
+                                    Imprimir Etiqueta
                                 </button>
                                 <a href="products.php" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors flex items-center justify-center">
                                     Ir a Productos
                                 </a>
-                                ${item.stock_total > 0 ? `
-                                <a href="product_sales.php" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors flex items-center justify-center">
-                                    Vender
-                                </a>
-                                ` : ''}
                             </div>
                         </div>
                     </div>
@@ -601,98 +491,91 @@ require_once '../includes/navbar_unified.php';
             
             container.innerHTML = html;
             container.classList.remove('hidden');
-            
-            // Scroll suave a resultados
             container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
-        function showBarcodeModal(codigo) {
+        function openPrintModal(codigo, titulo, precio) {
             currentBarcode = codigo;
             
-            // Generar SVG del código de barras (simplificado)
-            const display = document.getElementById('barcodeDisplay');
-            display.innerHTML = `
-                <div class="p-4 bg-gray-50 rounded-lg">
-                    <div class="mb-3">
-                        <svg width="300" height="100" xmlns="http://www.w3.org/2000/svg">
-                            <rect width="100%" height="100%" fill="white"/>
-                            <text x="150" y="85" text-anchor="middle" font-family="monospace" font-size="16" fill="black">${codigo}</text>
-                            <!-- Barras simplificadas -->
-                            ${generateSimpleBarcode(codigo)}
-                        </svg>
-                    </div>
-                    <p class="text-sm text-gray-600 text-center font-mono font-bold text-lg">${codigo}</p>
-                </div>
-            `;
+            document.getElementById('print_codigo').value = codigo;
+            document.getElementById('print_titulo').value = titulo;
+            document.getElementById('print_precio').value = precio;
+            document.getElementById('print_cantidad').value = 1;
             
-            document.getElementById('barcodeModal').classList.add('show');
+            document.getElementById('printModal').classList.add('show');
         }
 
-        function generateSimpleBarcode(codigo) {
-            let bars = '';
-            let x = 10;
-            const barWidth = 3;
-            
-            for (let i = 0; i < codigo.length; i++) {
-                const digit = parseInt(codigo[i]);
-                const height = 60 - (digit * 3);
-                
-                if (i % 2 === 0) {
-                    bars += `<rect x="${x}" y="15" width="${barWidth}" height="${height}" fill="black"/>`;
-                }
-                x += barWidth + 2;
-            }
-            
-            return bars;
+        function closePrintModal() {
+            document.getElementById('printModal').classList.remove('show');
         }
 
-        function closeBarcodeModal() {
-            document.getElementById('barcodeModal').classList.remove('show');
-        }
-
-        function printBarcode() {
-            if (!currentBarcode || !currentItem) {
-                showNotification('No hay código de barras para imprimir', 'error');
-                return;
-            }
+        function executePrint() {
+            const codigo = document.getElementById('print_codigo').value;
+            const titulo = document.getElementById('print_titulo').value;
+            const precio = parseFloat(document.getElementById('print_precio').value);
+            const cantidad = parseInt(document.getElementById('print_cantidad').value);
             
-            const formData = new FormData();
-            formData.append('action', 'print_label');
-            formData.append('codigo_barras', currentBarcode);
+            closePrintModal();
             
-            let titulo = '';
-            let precio = null;
-            
-            if (currentItem.modelo) {
-                // Es un celular
-                titulo = `${currentItem.modelo} ${currentItem.capacidad}`;
-                precio = currentItem.precio;
+            if (cantidad === 1) {
+                printLabelNES(codigo, titulo, precio);
             } else {
-                // Es un producto
-                titulo = currentItem.nombre;
-                precio = currentItem.precio_venta;
+                const etiquetas = [];
+                for (let i = 0; i < cantidad; i++) {
+                    etiquetas.push({
+                        codigo_barras: codigo,
+                        titulo: titulo,
+                        precio: precio
+                    });
+                }
+                printMultipleLabelsNES(etiquetas);
             }
             
+            showNotification(`Imprimiendo ${cantidad} etiqueta(s)...`, 'success');
+        }
+
+        function printLabelNES(codigo_barras, titulo, precio) {
+            const formData = new FormData();
+            formData.append('print_nes', 'true');
+            formData.append('codigo_barras', codigo_barras);
             formData.append('titulo', titulo);
             formData.append('precio', precio);
             
-            fetch('barcode_search.php', {
+            fetch('print_label.php', {
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const printWindow = window.open('', '_blank');
-                    printWindow.document.write(data.html);
-                    printWindow.document.close();
-                } else {
-                    showNotification(data.message, 'error');
-                }
+            .then(response => response.text())
+            .then(html => {
+                const printWindow = window.open('', '_blank', 'width=600,height=800');
+                printWindow.document.write(html);
+                printWindow.document.close();
             })
             .catch(error => {
                 console.error('Error:', error);
                 showNotification('Error al imprimir etiqueta', 'error');
+            });
+        }
+
+        function printMultipleLabelsNES(etiquetas) {
+            const formData = new FormData();
+            formData.append('print_nes', 'true');
+            formData.append('multiple', 'true');
+            formData.append('etiquetas_data', JSON.stringify(etiquetas));
+            
+            fetch('print_label.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(html => {
+                const printWindow = window.open('', '_blank', 'width=600,height=800');
+                printWindow.document.write(html);
+                printWindow.document.close();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotification('Error al imprimir etiquetas', 'error');
             });
         }
 
@@ -720,47 +603,43 @@ require_once '../includes/navbar_unified.php';
             }, 4000);
         }
 
-        // Auto-focus en el input
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         document.getElementById('barcodeInput').focus();
 
-        // Detectar lectura de escáner (entrada rápida)
         let scannerBuffer = '';
         let scannerTimeout;
 
         document.addEventListener('keypress', function(e) {
-            // Si el input tiene foco, dejar que funcione normalmente
             if (document.activeElement === document.getElementById('barcodeInput')) {
                 return;
             }
             
-            // Acumular caracteres
             scannerBuffer += e.key;
-            
-            // Resetear timeout
             clearTimeout(scannerTimeout);
             
-            // Si se detecta Enter, procesar el código
             if (e.key === 'Enter' && scannerBuffer.length >= 13) {
                 const codigo = scannerBuffer.replace('Enter', '').trim();
                 document.getElementById('barcodeInput').value = codigo;
                 searchBarcode(codigo);
                 scannerBuffer = '';
             } else {
-                // Limpiar buffer después de 100ms (lectura manual)
                 scannerTimeout = setTimeout(() => {
                     scannerBuffer = '';
                 }, 100);
             }
         });
 
-        // Cerrar modal con Escape
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
-                closeBarcodeModal();
+                closePrintModal();
             }
         });
 
-        // Inicializar historial
         updateRecentSearches();
     </script>
 </body>
