@@ -2,10 +2,7 @@
 /**
  * COMPONENTE NAVBAR/SIDEBAR UNIFICADO
  * Sistema de Inventario de Celulares
- * 
- * Uso en cada página:
- * require_once '../includes/navbar_unified.php';
- * renderNavbar('nombre_pagina');
+ * VERSIÓN MODIFICADA CON BÚSQUEDA POR CÓDIGO DE BARRAS
  */
 
 function renderNavbar($active_page = 'dashboard') {
@@ -34,6 +31,14 @@ function renderNavbar($active_page = 'dashboard') {
             'name' => 'Productos y Accesorios',
             'icon' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>',
             'url' => 'products.php',
+            'permission' => true,
+            'badge' => null
+        ],
+        [
+            'id' => 'barcode_search',
+            'name' => 'Buscar Código',
+            'icon' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path>',
+            'url' => 'barcode_search.php',
             'permission' => true,
             'badge' => null
         ],

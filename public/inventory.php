@@ -1,6 +1,7 @@
 <?php
 require_once '../config/database.php';
 require_once '../includes/auth.php';
+require_once '../includes/barcode_generator.php';
 
 setSecurityHeaders();
 startSecureSession();
@@ -11,6 +12,7 @@ requirePageAccess('inventory.php');
 
 $user = getCurrentUser();
 $db = getDB();
+$barcodeGen = new BarcodeGenerator();
 
 // SOLO ADMIN puede realizar acciones de modificación
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
@@ -25,6 +27,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     switch ($_POST['action']) {
         case 'add_device':
             try {
+                $db->beginTransaction();
+                
                 $stmt = $db->prepare("
                     INSERT INTO celulares (modelo, marca, capacidad, precio, precio_compra, imei1, imei2, color, estado, condicion, tienda_id, usuario_registro_id, notas) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -47,12 +51,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ]);
                 
                 if ($result) {
-                    logActivity($user['id'], 'add_device', "Dispositivo agregado: " . $_POST['modelo'] . " - " . $_POST['imei1']);
-                    echo json_encode(['success' => true, 'message' => 'Dispositivo agregado correctamente']);
+                    $device_id = $db->lastInsertId();
+                    
+                    // Generar código de barras automáticamente
+                    $codigo_barras = $barcodeGen->generateCelularBarcode(intval($_POST['tienda_id']));
+                    $update_stmt = $db->prepare("UPDATE celulares SET codigo_barras = ? WHERE id = ?");
+                    $update_stmt->execute([$codigo_barras, $device_id]);
+                    
+                    $db->commit();
+                    
+                    logActivity($user['id'], 'add_device', "Dispositivo agregado: " . $_POST['modelo'] . " - " . $_POST['imei1'] . " - Código: " . $codigo_barras);
+                    echo json_encode([
+                        'success' => true, 
+                        'message' => 'Dispositivo agregado correctamente',
+                        'codigo_barras' => $codigo_barras
+                    ]);
                 } else {
-                    echo json_encode(['success' => false, 'message' => 'Error al agregar dispositivo']);
+                    throw new Exception('Error al agregar dispositivo');
                 }
             } catch(Exception $e) {
+                $db->rollback();
                 logError("Error al agregar dispositivo: " . $e->getMessage());
                 if (strpos($e->getMessage(), 'Duplicate entry') !== false) {
                     echo json_encode(['success' => false, 'message' => 'El IMEI ya existe en el sistema']);
@@ -100,6 +118,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
             exit;
             
+        case 'generate_barcode':
+            try {
+                $device_id = intval($_POST['device_id']);
+                
+                // Obtener tienda del dispositivo
+                $stmt = $db->prepare("SELECT tienda_id, codigo_barras FROM celulares WHERE id = ?");
+                $stmt->execute([$device_id]);
+                $device = $stmt->fetch();
+                
+                if (!$device) {
+                    throw new Exception('Dispositivo no encontrado');
+                }
+                
+                // Si ya tiene código, preguntar si regenerar
+                if ($device['codigo_barras'] && !isset($_POST['force'])) {
+                    echo json_encode([
+                        'success' => false, 
+                        'message' => 'El dispositivo ya tiene un código de barras',
+                        'codigo_existente' => $device['codigo_barras']
+                    ]);
+                    exit;
+                }
+                
+                // Generar nuevo código
+                $codigo_barras = $barcodeGen->generateCelularBarcode($device['tienda_id']);
+                
+                // Actualizar en BD
+                $update_stmt = $db->prepare("UPDATE celulares SET codigo_barras = ? WHERE id = ?");
+                $update_stmt->execute([$codigo_barras, $device_id]);
+                
+                logActivity($user['id'], 'generate_barcode', "Código generado para dispositivo ID: $device_id - Código: $codigo_barras");
+                
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Código de barras generado correctamente',
+                    'codigo_barras' => $codigo_barras
+                ]);
+            } catch(Exception $e) {
+                logError("Error al generar código de barras: " . $e->getMessage());
+                echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+            }
+            exit;
+            
         case 'delete_device':
             try {
                 $device_id = intval($_POST['device_id']);
@@ -131,8 +192,9 @@ $where_conditions = [];
 $params = [];
 
 if (!empty($search)) {
-    $where_conditions[] = "(modelo LIKE ? OR marca LIKE ? OR imei1 LIKE ? OR imei2 LIKE ?)";
+    $where_conditions[] = "(modelo LIKE ? OR marca LIKE ? OR imei1 LIKE ? OR imei2 LIKE ? OR codigo_barras LIKE ?)";
     $search_param = "%$search%";
+    $params[] = $search_param;
     $params[] = $search_param;
     $params[] = $search_param;
     $params[] = $search_param;
@@ -202,6 +264,21 @@ require_once '../includes/navbar_unified.php';
             background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
             border-left: 4px solid #f59e0b;
         }
+        .barcode-badge {
+            background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+        }
+        .barcode-btn {
+            transition: all 0.2s ease;
+        }
+        .barcode-btn:hover {
+            transform: scale(1.05);
+        }
     </style>
 </head>
 <body class="bg-gray-100">
@@ -214,31 +291,40 @@ require_once '../includes/navbar_unified.php';
             <!-- Header -->
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
                 <div>
-                    <h2 class="text-3xl font-bold text-gray-900">Inventario</h2>
+                    <h2 class="text-3xl font-bold text-gray-900">Inventario Celulares</h2>
                     <p class="text-gray-600">
                         <?php if ($user['rol'] === 'admin'): ?>
-                            Gestión completa de dispositivos móviles
+                            Gestión completa de dispositivos móviles con códigos de barras
                         <?php else: ?>
                             Consulta de dispositivos disponibles para venta
                         <?php endif; ?>
                     </p>
                 </div>
                 
-                <?php if (hasPermission('add_devices')): ?>
-                <button onclick="openAddModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center mt-4 md:mt-0">
-                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                    </svg>
-                    Agregar Dispositivo
-                </button>
-                <?php else: ?>
-                <div class="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-blue-700 text-sm mt-4 md:mt-0">
-                    <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                    Solo consulta - Para ventas ir a la sección Ventas
+                <div class="flex gap-3 mt-4 md:mt-0">
+                    <a href="barcode_search.php" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"></path>
+                        </svg>
+                        Buscar por Código
+                    </a>
+                    
+                    <?php if (hasPermission('add_devices')): ?>
+                    <button onclick="openAddModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                        </svg>
+                        Agregar Dispositivo
+                    </button>
+                    <?php else: ?>
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-blue-700 text-sm">
+                        <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        Solo consulta - Para ventas ir a la sección Ventas
+                    </div>
+                    <?php endif; ?>
                 </div>
-                <?php endif; ?>
             </div>
 
             <!-- Alerta para vendedores -->
@@ -261,7 +347,7 @@ require_once '../includes/navbar_unified.php';
                 <form method="GET" class="flex flex-wrap gap-4">
                     <div class="flex-1 min-w-64">
                         <input type="text" name="search" value="<?php echo htmlspecialchars($search); ?>" 
-                               placeholder="Buscar por modelo, marca o IMEI..." 
+                               placeholder="Buscar por modelo, marca, IMEI o código de barras..." 
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg">
                     </div>
                     <div>
@@ -297,6 +383,7 @@ require_once '../includes/navbar_unified.php';
                     <table class="w-full">
                         <thead class="bg-gray-50">
                             <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Código Barras</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dispositivo</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Precio</th>
                                 <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">IMEI</th>
@@ -313,7 +400,7 @@ require_once '../includes/navbar_unified.php';
                         <tbody class="divide-y divide-gray-200">
                             <?php if (empty($devices)): ?>
                                 <tr>
-                                    <td colspan="<?php echo hasPermission('view_all_inventory') ? (hasPermission('edit_devices') ? '7' : '6') : (hasPermission('edit_devices') ? '6' : '5'); ?>" class="px-4 py-8 text-center text-gray-500">
+                                    <td colspan="<?php echo hasPermission('view_all_inventory') ? (hasPermission('edit_devices') ? '8' : '7') : (hasPermission('edit_devices') ? '7' : '6'); ?>" class="px-4 py-8 text-center text-gray-500">
                                         <div class="flex flex-col items-center">
                                             <svg class="w-12 h-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
@@ -330,6 +417,27 @@ require_once '../includes/navbar_unified.php';
                             <?php else: ?>
                                 <?php foreach($devices as $device): ?>
                                     <tr class="hover:bg-gray-50 transition-colors">
+                                        <td class="px-4 py-4">
+                                            <?php if ($device['codigo_barras']): ?>
+                                                <div class="flex items-center gap-2">
+                                                    <span class="barcode-badge"><?php echo htmlspecialchars($device['codigo_barras']); ?></span>
+                                                    <button onclick="viewBarcode('<?php echo $device['codigo_barras']; ?>', '<?php echo htmlspecialchars($device['modelo']); ?>', <?php echo $device['precio']; ?>)" 
+                                                            class="text-purple-600 hover:text-purple-900 barcode-btn" title="Ver código de barras">
+                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            <?php elseif (hasPermission('edit_devices')): ?>
+                                                <button onclick="generateBarcodeForDevice(<?php echo $device['id']; ?>)" 
+                                                        class="text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-1 rounded transition-colors">
+                                                    Generar
+                                                </button>
+                                            <?php else: ?>
+                                                <span class="text-xs text-gray-400">Sin código</span>
+                                            <?php endif; ?>
+                                        </td>
                                         <td class="px-4 py-4">
                                             <div>
                                                 <p class="font-medium text-gray-900"><?php echo htmlspecialchars($device['modelo']); ?></p>
@@ -395,7 +503,7 @@ require_once '../includes/navbar_unified.php';
 
             <!-- Estadísticas adicionales -->
             <?php if (!empty($devices)): ?>
-            <div class="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="mt-6 grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div class="bg-white rounded-lg shadow p-4">
                     <div class="text-center">
                         <p class="text-2xl font-bold text-green-600">
@@ -423,9 +531,17 @@ require_once '../includes/navbar_unified.php';
                 <div class="bg-white rounded-lg shadow p-4">
                     <div class="text-center">
                         <p class="text-2xl font-bold text-purple-600">
+                            <?php echo count(array_filter($devices, function($d) { return !empty($d['codigo_barras']); })); ?>
+                        </p>
+                        <p class="text-sm text-gray-600">Con Código</p>
+                    </div>
+                </div>
+                <div class="bg-white rounded-lg shadow p-4">
+                    <div class="text-center">
+                        <p class="text-2xl font-bold text-gray-600">
                             <?php echo count($devices); ?>
                         </p>
-                        <p class="text-sm text-gray-600">Total Dispositivos</p>
+                        <p class="text-sm text-gray-600">Total</p>
                     </div>
                 </div>
             </div>
@@ -433,7 +549,7 @@ require_once '../includes/navbar_unified.php';
         </div>
     </main>
 
-    <!-- Modal Agregar/Editar (solo para admin) -->
+    <!-- Modal Agregar/Editar -->
     <?php if (hasPermission('add_devices')): ?>
     <div id="deviceModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
         <div class="bg-white rounded-lg p-6 w-full max-w-2xl mx-4 max-h-screen overflow-y-auto">
@@ -524,6 +640,10 @@ require_once '../includes/navbar_unified.php';
                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"></textarea>
                 </div>
                 
+                <div id="barcodeInfo" class="hidden bg-purple-50 border border-purple-200 rounded-lg p-3">
+                    <p class="text-sm text-purple-800 font-medium">✓ Se generará código de barras automáticamente</p>
+                </div>
+                
                 <div class="flex justify-end gap-3">
                     <button type="button" onclick="closeModal()" 
                             class="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg">
@@ -539,150 +659,348 @@ require_once '../includes/navbar_unified.php';
     </div>
     <?php endif; ?>
 
+    <!-- Modal Ver Código de Barras -->
+    <div id="barcodeViewModal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold">Código de Barras</h3>
+                <button onclick="closeBarcodeViewModal()" class="text-gray-400 hover:text-gray-600">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <div id="barcodeDisplay" class="text-center mb-4">
+                <!-- El código se mostrará aquí -->
+            </div>
+            
+            <div class="flex gap-3">
+                <button onclick="printBarcodeLabel()" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors">
+                    Imprimir Etiqueta
+                </button>
+                <button onclick="goToBarcodeSearch()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
+                    Ir a Búsqueda
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        <?php if (hasPermission('add_devices')): ?>
-        let isEditMode = false;
+// Variables globales
+let isEditMode = false;
+let currentBarcodeData = null;
 
-        function openAddModal() {
-            isEditMode = false;
-            document.getElementById('modalTitle').textContent = 'Agregar Dispositivo';
-            document.getElementById('formAction').value = 'add_device';
-            document.getElementById('deviceForm').reset();
-            document.getElementById('deviceId').value = '';
-            document.getElementById('deviceModal').classList.add('show');
-        }
+// Funciones de gestión de dispositivos
+function openAddModal() {
+    <?php if (hasPermission('add_devices')): ?>
+    isEditMode = false;
+    document.getElementById('modalTitle').textContent = 'Agregar Dispositivo';
+    document.getElementById('formAction').value = 'add_device';
+    document.getElementById('deviceForm').reset();
+    document.getElementById('deviceId').value = '';
+    document.getElementById('barcodeInfo').classList.remove('hidden');
+    document.getElementById('deviceModal').classList.add('show');
+    <?php else: ?>
+    showNotification('No tienes permisos para agregar dispositivos', 'error');
+    <?php endif; ?>
+}
 
-        function openEditModal(device) {
-            isEditMode = true;
-            document.getElementById('modalTitle').textContent = 'Editar Dispositivo';
-            document.getElementById('formAction').value = 'update_device';
-            document.getElementById('deviceId').value = device.id;
-            
-            // Llenar formulario
-            document.getElementById('modelo').value = device.modelo || '';
-            document.getElementById('marca').value = device.marca || '';
-            document.getElementById('capacidad').value = device.capacidad || '';
-            document.getElementById('color').value = device.color || '';
-            document.getElementById('precio').value = device.precio || '';
-            document.getElementById('precio_compra').value = device.precio_compra || '';
-            document.getElementById('imei1').value = device.imei1 || '';
-            document.getElementById('imei2').value = device.imei2 || '';
-            document.getElementById('estado').value = device.estado || 'disponible';
-            document.getElementById('condicion').value = device.condicion || 'nuevo';
-            document.getElementById('notas').value = device.notas || '';
-            document.getElementById('tienda_id').value = device.tienda_id || '';
-            
-            document.getElementById('deviceModal').classList.add('show');
-        }
+function openEditModal(device) {
+    <?php if (hasPermission('add_devices')): ?>
+    isEditMode = true;
+    document.getElementById('modalTitle').textContent = 'Editar Dispositivo';
+    document.getElementById('formAction').value = 'update_device';
+    document.getElementById('deviceId').value = device.id;
+    
+    document.getElementById('modelo').value = device.modelo || '';
+    document.getElementById('marca').value = device.marca || '';
+    document.getElementById('capacidad').value = device.capacidad || '';
+    document.getElementById('color').value = device.color || '';
+    document.getElementById('precio').value = device.precio || '';
+    document.getElementById('precio_compra').value = device.precio_compra || '';
+    document.getElementById('imei1').value = device.imei1 || '';
+    document.getElementById('imei2').value = device.imei2 || '';
+    document.getElementById('estado').value = device.estado || 'disponible';
+    document.getElementById('condicion').value = device.condicion || 'nuevo';
+    document.getElementById('notas').value = device.notas || '';
+    document.getElementById('tienda_id').value = device.tienda_id || '';
+    
+    document.getElementById('barcodeInfo').classList.add('hidden');
+    document.getElementById('deviceModal').classList.add('show');
+    <?php else: ?>
+    showNotification('No tienes permisos para editar dispositivos', 'error');
+    <?php endif; ?>
+}
 
-        function closeModal() {
-            document.getElementById('deviceModal').classList.remove('show');
-        }
+function closeModal() {
+    <?php if (hasPermission('add_devices')): ?>
+    const modal = document.getElementById('deviceModal');
+    if (modal) {
+        modal.classList.remove('show');
+    }
+    <?php endif; ?>
+}
 
-        function saveDevice() {
-            const formData = new FormData();
-            
-            formData.append('action', document.getElementById('formAction').value);
-            
-            if (isEditMode) {
-                formData.append('device_id', document.getElementById('deviceId').value);
+function saveDevice() {
+    <?php if (hasPermission('add_devices')): ?>
+    const formData = new FormData();
+    
+    formData.append('action', document.getElementById('formAction').value);
+    
+    if (isEditMode) {
+        formData.append('device_id', document.getElementById('deviceId').value);
+    }
+    
+    formData.append('modelo', document.getElementById('modelo').value);
+    formData.append('marca', document.getElementById('marca').value);
+    formData.append('capacidad', document.getElementById('capacidad').value);
+    formData.append('color', document.getElementById('color').value);
+    formData.append('precio', document.getElementById('precio').value);
+    formData.append('precio_compra', document.getElementById('precio_compra').value);
+    formData.append('imei1', document.getElementById('imei1').value);
+    formData.append('imei2', document.getElementById('imei2').value);
+    formData.append('estado', document.getElementById('estado').value);
+    formData.append('condicion', document.getElementById('condicion').value);
+    formData.append('notas', document.getElementById('notas').value);
+    formData.append('tienda_id', document.getElementById('tienda_id').value);
+    
+    const button = event.target;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Guardando...';
+    
+    fetch('inventory.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(data.message, 'success');
+            if (data.codigo_barras) {
+                showNotification('Código de barras: ' + data.codigo_barras, 'info');
             }
-            
-            formData.append('modelo', document.getElementById('modelo').value);
-            formData.append('marca', document.getElementById('marca').value);
-            formData.append('capacidad', document.getElementById('capacidad').value);
-            formData.append('color', document.getElementById('color').value);
-            formData.append('precio', document.getElementById('precio').value);
-            formData.append('precio_compra', document.getElementById('precio_compra').value);
-            formData.append('imei1', document.getElementById('imei1').value);
-            formData.append('imei2', document.getElementById('imei2').value);
-            formData.append('estado', document.getElementById('estado').value);
-            formData.append('condicion', document.getElementById('condicion').value);
-            formData.append('notas', document.getElementById('notas').value);
-            formData.append('tienda_id', document.getElementById('tienda_id').value);
-            
-            const button = event.target;
-            const originalText = button.textContent;
-            button.disabled = true;
-            button.textContent = 'Guardando...';
-            
-            fetch('inventory.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showNotification('✅ ' + data.message, 'success');
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showNotification('❌ ' + data.message, 'error');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showNotification(data.message, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error en la conexión', 'error');
+    })
+    .finally(() => {
+        button.disabled = false;
+        button.textContent = originalText;
+    });
+    <?php endif; ?>
+}
+
+function generateBarcodeForDevice(deviceId) {
+    <?php if (hasPermission('edit_devices')): ?>
+    if (!confirm('¿Generar código de barras para este dispositivo?')) {
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('action', 'generate_barcode');
+    formData.append('device_id', deviceId);
+    
+    fetch('inventory.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(data.message, 'success');
+            showNotification('Código: ' + data.codigo_barras, 'info');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            if (data.codigo_existente) {
+                if (confirm(data.message + '\n\n¿Desea regenerar el código?')) {
+                    formData.append('force', '1');
+                    fetch('inventory.php', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showNotification('Código regenerado', 'success');
+                            setTimeout(() => location.reload(), 1000);
+                        }
+                    });
                 }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showNotification('❌ Error en la conexión', 'error');
-            })
-            .finally(() => {
-                button.disabled = false;
-                button.textContent = originalText;
-            });
-        }
-
-        function deleteDevice(id) {
-            if (!confirm('¿Estás seguro de que quieres eliminar este dispositivo?\n\nEsta acción no se puede deshacer.')) {
-                return;
+            } else {
+                showNotification(data.message, 'error');
             }
-            
-            const formData = new FormData();
-            formData.append('action', 'delete_device');
-            formData.append('device_id', id);
-            
-            fetch('inventory.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showNotification('✅ ' + data.message, 'success');
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showNotification('❌ ' + data.message, 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                showNotification('❌ Error en la conexión', 'error');
-            });
         }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error en la conexión', 'error');
+    });
+    <?php else: ?>
+    showNotification('No tienes permisos para generar códigos de barras', 'error');
+    <?php endif; ?>
+}
 
-        // Cerrar modal con Escape
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                closeModal();
-            }
-        });
-        <?php endif; ?>
-
-        // Sistema de notificaciones
-        function showNotification(message, type = 'info') {
-            const notification = document.createElement('div');
-            notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm transition-all duration-300 ${
-                type === 'success' ? 'bg-green-500 text-white' :
-                type === 'error' ? 'bg-red-500 text-white' :
-                'bg-blue-500 text-white'
-            }`;
-            notification.textContent = message;
-            
-            document.body.appendChild(notification);
-            
-            // Auto-remove after 4 seconds
-            setTimeout(() => {
-                notification.style.opacity = '0';
-                setTimeout(() => notification.remove(), 300);
-            }, 4000);
+function deleteDevice(id) {
+    <?php if (hasPermission('edit_devices')): ?>
+    if (!confirm('¿Estás seguro de que quieres eliminar este dispositivo?\n\nEsta acción no se puede deshacer.')) {
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('action', 'delete_device');
+    formData.append('device_id', id);
+    
+    fetch('inventory.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification(data.message, 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification(data.message, 'error');
         }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error en la conexión', 'error');
+    });
+    <?php else: ?>
+    showNotification('No tienes permisos para eliminar dispositivos', 'error');
+    <?php endif; ?>
+}
+
+function viewBarcode(codigo, modelo, precio) {
+    currentBarcodeData = { codigo: codigo, modelo: modelo, precio: precio };
+    
+    const display = document.getElementById('barcodeDisplay');
+    if (!display) {
+        console.error('No se encontró el elemento barcodeDisplay');
+        return;
+    }
+    
+    display.innerHTML = '<div class="mb-4">' +
+        '<p class="text-sm text-gray-600 mb-2">' + modelo + '</p>' +
+        '<div class="bg-gray-50 p-4 rounded-lg">' +
+        '<svg width="280" height="80" xmlns="http://www.w3.org/2000/svg">' +
+        '<rect width="100%" height="100%" fill="white"/>' +
+        generateSimpleBars(codigo) +
+        '<text x="140" y="70" text-anchor="middle" font-family="monospace" font-size="14" fill="black">' + codigo + '</text>' +
+        '</svg>' +
+        '</div>' +
+        '<p class="font-mono font-bold text-lg mt-2 text-purple-600">' + codigo + '</p>' +
+        '<p class="text-sm text-gray-600 mt-1">Precio: $' + parseFloat(precio).toFixed(2) + '</p>' +
+        '</div>';
+    
+    const modal = document.getElementById('barcodeViewModal');
+    if (modal) {
+        modal.classList.add('show');
+    }
+}
+
+function generateSimpleBars(codigo) {
+    let bars = '';
+    let x = 10;
+    for (let i = 0; i < codigo.length; i++) {
+        if (i % 2 === 0) {
+            bars += '<rect x="' + x + '" y="10" width="2" height="50" fill="black"/>';
+        }
+        x += 4;
+    }
+    return bars;
+}
+
+function closeBarcodeViewModal() {
+    const modal = document.getElementById('barcodeViewModal');
+    if (modal) {
+        modal.classList.remove('show');
+    }
+}
+
+function printBarcodeLabel() {
+    if (!currentBarcodeData) {
+        showNotification('No hay código de barras seleccionado', 'error');
+        return;
+    }
+    
+    const printWindow = window.open('', '_blank');
+    const printContent = '<!DOCTYPE html>' +
+        '<html>' +
+        '<head>' +
+        '<meta charset="UTF-8">' +
+        '<style>' +
+        '@page { size: 2.5in 1.5in; margin: 0; }' +
+        'body { margin: 0; padding: 10px; font-family: Arial; }' +
+        '.label { border: 1px solid #000; padding: 5px; text-align: center; }' +
+        '.title { font-size: 10px; font-weight: bold; margin-bottom: 5px; }' +
+        '.barcode { margin: 5px 0; }' +
+        '.price { font-size: 14px; font-weight: bold; margin-top: 5px; }' +
+        '</style>' +
+        '</head>' +
+        '<body>' +
+        '<div class="label">' +
+        '<div class="title">' + currentBarcodeData.modelo + '</div>' +
+        '<div class="barcode">' +
+        '<svg width="220" height="60" xmlns="http://www.w3.org/2000/svg">' +
+        '<rect width="100%" height="100%" fill="white"/>' +
+        generateSimpleBars(currentBarcodeData.codigo) +
+        '<text x="110" y="55" text-anchor="middle" font-family="monospace" font-size="10">' + currentBarcodeData.codigo + '</text>' +
+        '</svg>' +
+        '</div>' +
+        '<div class="price">$' + parseFloat(currentBarcodeData.precio).toFixed(2) + '</div>' +
+        '</div>' +
+        '<script>window.print(); window.onafterprint = function() { window.close(); };<\/script>' +
+        '</body>' +
+        '</html>';
+    
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+}
+
+function goToBarcodeSearch() {
+    if (currentBarcodeData) {
+        window.location.href = 'barcode_search.php?codigo=' + currentBarcodeData.codigo;
+    } else {
+        showNotification('No hay código de barras seleccionado', 'error');
+    }
+}
+
+function showNotification(message, type) {
+    type = type || 'info';
+    const notification = document.createElement('div');
+    const bgColor = type === 'success' ? 'bg-green-500 text-white' :
+                    type === 'error' ? 'bg-red-500 text-white' :
+                    type === 'warning' ? 'bg-yellow-500 text-white' :
+                    'bg-blue-500 text-white';
+    
+    notification.className = 'fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm transition-all duration-300 ' + bgColor;
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(function() {
+        notification.style.opacity = '0';
+        setTimeout(function() {
+            notification.remove();
+        }, 300);
+    }, 4000);
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeModal();
+        closeBarcodeViewModal();
+    }
+});
     </script>
 </body>
 </html>
